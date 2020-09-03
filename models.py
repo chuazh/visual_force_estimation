@@ -61,7 +61,7 @@ class StateVisionModel(nn.Module):
 def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat"):
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available:
+    if torch.cuda.is_available():
         print("using GPU acceleration")
     
     model = model.to(device,dtype=torch.float)
