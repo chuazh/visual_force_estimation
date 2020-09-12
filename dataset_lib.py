@@ -37,7 +37,7 @@ class ImgDataset(data.Dataset):
     
     
     '''
-    def __init__(self, label_dir, image_dir, data_sets = None, transform=None, crop_list = [], include_torque = False, custom_state = None):
+    def __init__(self, label_dir, image_dir, data_sets = None, transform=None, crop_list = [], eval_params = None , include_torque = False, custom_state = None):
         '''
         Initialization
            exclude_index is a list denoting which datasets to exclude indexed
@@ -57,6 +57,11 @@ class ImgDataset(data.Dataset):
         self.label_array = self.read_labels(self.label_dir,data_sets)
         self.image_list,self.dataset_list = self.generate_image_list(self.image_dir,data_sets)
         
+        if eval_params is None:
+            self.mean,self.stdev = self.normalize_state()
+        else:
+            mean,std = eval_params
+            self.mean,self.stdev = self.normalize_state(mean=mean,stdev=std)
         
     def __len__(self):
         'Denotes the total number of samples'
@@ -80,19 +85,6 @@ class ImgDataset(data.Dataset):
             #x = transforms.functional.crop(x,top=57,left=320,height=462,width=462)
             x = transforms.functional.crop(x,top=100,left=320,height=250,width=250) #new dataset
         
-        '''
-        if self.dataset_list[index] in [14,15,16]:
-          x = transforms.functional.crop(x,top=40,left=400,height=462,width=462) # for dataset 14-16
-        elif self.dataset_list[index] in [17,18,19]:
-          x = transforms.functional.crop(x,top=57,left=180,height=462,width=462) # dataset 17 - 19
-        elif self.dataset_list[index] in [20,21,22]:
-          x = transforms.functional.crop(x,top=70,left=145,height=462,width=462) # dataset 20-21
-        elif self.dataset_list[index] in [23]:
-          x = transforms.functional.crop(x,top=30,left=250,height=462,width=462) # dataset 23  
-        else:
-            x = transforms.functional.crop(x,top=113,left=395,height=288,width=288)
-        '''
-        
         if self.include_torque:
             y = self.label_array[index][1:7] #include torque
         else:
@@ -105,7 +97,7 @@ class ImgDataset(data.Dataset):
             x2 = self.label_array[index][7:]
         else:
             x2 = self.label_array[index][self.custom_state]
-
+        
         return x, x2, y 
     
     def generate_image_list(self,image_dir,data_sets):
@@ -148,3 +140,150 @@ class ImgDataset(data.Dataset):
         
         return labels
 
+    def normalize_state(self,mean=None,stdev=None):
+        '''
+        Finds the mean and standard deviation of the dataset and applies
+        it all values.
+        
+        Returns the mean and standard deviation
+
+        '''
+        if mean is None and stdev is None:
+            mean = np.mean(self.label_array,axis=0)
+            stdev = np.std(self.label_array,axis=0)
+            
+        self.raw_label_array = self.label_array
+        self.label_array = (self.label_array-mean)/stdev
+        
+        return mean,stdev
+
+class StateDataset(data.Dataset):
+    
+    '''Characterizes a dataset for PyTorch'''
+    def __init__(self, label_dir, data_sets = None, eval_params = None , include_torque = False, custom_state = None):
+        '''
+        Initialization
+           exclude_index is a list denoting which datasets to exclude indexed
+           from 1
+        '''
+        self.label_dir = label_dir
+        self.include_torque = include_torque
+        self.custom_state= custom_state
+        self.label_array = self.read_labels(self.label_dir,data_sets)
+        if eval_params is None:
+            self.mean,self.stdev = self.normalize_state()
+        else:
+            mean,std = eval_params
+            self.mean,self.stdev = self.normalize_state(mean=mean,stdev=std)
+        
+    def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.label_array)
+
+    def __getitem__(self, index):
+        'Generates one sample of data'
+        if self.custom_state is None:
+            x = self.label_array[index][7:]
+        else:
+            x = self.label_array[index][self.custom_state]
+        if self.include_torque:
+            y = self.label_array[index][1:7] #include torque
+        else:
+            y = self.label_array[index][1:4] #remove the timestamp
+        
+        dummy = 0 # so that the train loop can still execute
+        
+        return dummy, x, y
+   
+    def read_labels(self,label_dir,data_sets):
+        '''loads all the label data, accounting for excluded sets'''
+        
+        file_list = natsort.humansorted(glob.glob(label_dir + "/labels_full_*.txt"))
+        label_list = []
+        
+        if data_sets is not None:
+            for i in data_sets:
+                data = np.loadtxt(file_list[i-1],delimiter=",")
+                label_list.append(data)
+        else:
+            for i in range(len(file_list)):
+                data = np.loadtxt(file_list[i],delimiter=",")
+                label_list.append(data)
+        
+        labels = np.concatenate(label_list,axis=0)
+        
+        return labels
+    
+    def normalize_state(self,mean=None,stdev=None):
+        '''
+        Finds the mean and standard deviation of the dataset and applies
+        it all values.
+        
+        Returns the mean and standard deviation
+
+        '''
+        if mean is None and stdev is None:
+            mean = np.mean(self.label_array,axis=0)
+            stdev = np.std(self.label_array,axis=0)
+            
+        self.raw_label_array = self.label_array
+        self.label_array = (self.label_array-mean)/stdev
+        
+        return mean,stdev
+    
+def init_dataset(train_list,val_list,test_list,model_type,config_dict):
+    
+    file_dir = config_dict['file_dir']
+    include_torque = config_dict['include_torque']
+    custom_state = config_dict['custom_state']
+    batch_size = config_dict['batch_size']
+    
+    if model_type == "S":
+        train_set = StateDataset(file_dir,
+                                 data_sets=train_list,
+                                 include_torque = include_torque,
+                                 custom_state= custom_state)
+        val_set = StateDataset(file_dir,
+                                data_sets=val_list,
+                                eval_params=(train_set.mean,train_set.stdev),
+                                include_torque = include_torque,
+                                custom_state= custom_state)
+        test_set = StateDataset(file_dir,
+                                data_sets=test_list,
+                                eval_params=(train_set.mean,train_set.stdev),
+                                include_torque = include_torque,
+                                custom_state= custom_state)
+    else:
+        crop_list = config_dict['crop_list']
+        trans_function = config_dict['trans_function']
+        
+        train_set = ImgDataset(file_dir,file_dir,
+                               data_sets=train_list,
+                               transform = trans_function,
+                               crop_list=crop_list,
+                               include_torque= include_torque,
+                               custom_state= custom_state)
+        val_set = ImgDataset(file_dir,file_dir,
+                              data_sets=val_list,
+                              transform = trans_function,
+                              crop_list=crop_list,
+                              eval_params=(train_set.mean,train_set.stdev),
+                              include_torque= include_torque,
+                              custom_state= custom_state)
+        test_set = ImgDataset(file_dir,file_dir,
+                              data_sets=test_list,
+                              transform = trans_function,
+                              crop_list=crop_list,
+                              eval_params=(train_set.mean,train_set.stdev),
+                              include_torque= include_torque,
+                              custom_state= custom_state)
+        
+    train_loader = data.DataLoader(train_set,batch_size=batch_size,shuffle=True)
+    val_loader = data.DataLoader(val_set,batch_size=batch_size,shuffle=False)
+    test_loader = data.DataLoader(test_set,batch_size=batch_size,shuffle=False)
+    
+    dataloaders_dict = {'train':train_loader,'val':val_loader,'test':test_loader}
+    dataset_sizes = {'train':len(train_set),'val':len(val_set),'test':len(test_set)}
+    
+    return dataloaders_dict,dataset_sizes
+    

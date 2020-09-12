@@ -14,6 +14,8 @@ import torch.nn.functional as F
 from torchvision import models
 import time
 import numpy as np
+from tqdm import tqdm
+import pdb
 
 class StateVisionModel(nn.Module):
   
@@ -58,11 +60,37 @@ class StateVisionModel(nn.Module):
 
     return x
 
-def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat"):
+def StateModel(input_dim,output_dim):
+    
+    model = nn.Sequential(
+    nn.Linear(input_dim,500),
+    nn.BatchNorm1d(500),
+    nn.ReLU(),
+    nn.Linear(500,1000),
+    nn.BatchNorm1d(1000),
+    nn.ReLU(),
+    nn.Linear(1000,1000),
+    nn.BatchNorm1d(1000),
+    nn.ReLU(),
+    nn.Linear(1000,1000),
+    nn.BatchNorm1d(1000),
+    nn.ReLU(),
+    nn.Linear(1000,500),
+    nn.BatchNorm1d(500),
+    nn.ReLU(),
+    nn.Linear(500,50),
+    nn.BatchNorm1d(50),
+    nn.ReLU(),
+    nn.Linear(50,output_dim)
+    )
+    
+    return model
+
+def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", no_pbar=False):
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
-        print("using GPU acceleration")
+        tqdm.write("using GPU acceleration")
     
     model = model.to(device,dtype=torch.float)
     
@@ -73,8 +101,9 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
     val_losses = np.zeros(num_epochs*dataset_sizes['val'])
     
     for epoch in range(num_epochs):
-        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
-        print('-' * 10)
+        if no_pbar==False:
+            print('Epoch {}/{}'.format(epoch+1, num_epochs))
+            print('-' * 10)
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
@@ -89,75 +118,79 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
             it = 1
             batch_size = 0
 
-            for inputs, aug_inputs, labels in dataloaders[phase]:
-                # zero the parameter gradients
-                optimizer.zero_grad()
-                
-                inputs = inputs.to(device,dtype=torch.float)
-                
-                if model_type != "V":
-                    aug_inputs = aug_inputs.to(device,dtype=torch.float)
+            with tqdm(total=len(dataloaders[phase]),leave=True,miniters=1,disable=no_pbar) as pbar:
+                for inputs, aug_inputs, labels in dataloaders[phase]:
+                    # zero the parameter gradients
+                    optimizer.zero_grad()
                     
-                labels = labels.to(device,dtype=torch.float)
-
-                # forward
-                # track history if only in train
-                if phase == 'train':
-                  torch.set_grad_enabled(True)
-                  
-                  if model_type == "V":
-                      outputs = model(inputs)
-                  elif model_type == "VS":
-                      outputs= model(inputs,aug_inputs)
-                  else:
-                      outputs = model(aug_inputs)
+                    if model_type !="S":
+                        inputs = inputs.to(device,dtype=torch.float)
+                    
+                    if model_type != "V":
+                        aug_inputs = aug_inputs.to(device,dtype=torch.float)
+                        
+                    labels = labels.to(device,dtype=torch.float)
+    
+                    # forward
+                    # track history if only in train
+                    if phase == 'train':
+                      torch.set_grad_enabled(True)
                       
-                  loss = criterion(outputs,labels)
-                  loss.backward()
-                  #xm.optimizer_step(optimizer,barrier=True)
-                  optimizer.step()
-                else :
-                  torch.set_grad_enabled(False)
-                  
-                  if model_type == "V":
-                      outputs = model(inputs)
-                  elif model_type == "VS":
-                      outputs= model(inputs,aug_inputs)
-                  else:
-                      outputs = model(aug_inputs)
+                      if model_type == "V":
+                          outputs = model(inputs)
+                      elif model_type == "VS":
+                          outputs= model(inputs,aug_inputs)
+                      else:
+                          outputs = model(aug_inputs)
+                          
+                          
+                      loss = criterion(outputs,labels)
+                      loss.backward()
+                      #xm.optimizer_step(optimizer,barrier=True)
+                      optimizer.step()
+                    else :
+                      torch.set_grad_enabled(False)
                       
-                  loss = criterion(outputs,labels)
-                
-                # statistics
-                running_loss += loss.item() #* inputs.size(0) # multiply by the number of elements to get back the total loss, usually the loss function outputs the mean
-                batch_size += inputs.size(0)
-                avg_loss = running_loss/batch_size
-                
-                if phase== 'train':
-                    train_losses[it] = avg_loss
-                else:
-                    val_losses[it] = avg_loss
-                
-                if it%10 == 0:
-                  print('average loss for iteration ' + str(it)+ ' : ' + str(avg_loss))
-                it += 1
+                      if model_type == "V":
+                          outputs = model(inputs)
+                      elif model_type == "VS":
+                          outputs= model(inputs,aug_inputs)
+                      else:
+                          outputs = model(aug_inputs)
+                          
+                      loss = criterion(outputs,labels)
+                    
+                    # statistics
+                    running_loss += loss.item() #* inputs.size(0) # multiply by the number of elements to get back the total loss, usually the loss function outputs the mean
+                    batch_size += inputs.size(0)
+                    avg_loss = running_loss/batch_size
+                    
+                    if phase== 'train':
+                        train_losses[it] = avg_loss
+                    else:
+                        val_losses[it] = avg_loss
+                    '''
+                    if it%10 == 0:
+                      print('average loss for batch ' + str(it)+ ' : ' + str(avg_loss))'''
+                    it += 1
+                    pbar.set_postfix({'loss': avg_loss})
+                    pbar.update(1)
 
             epoch_loss = running_loss / dataset_sizes[phase] #divide by the total size of our dataset to get the mean loss per instance
             
-            
-            print('{} Loss: {:.4f}'.format(
-                phase, epoch_loss))
+            if no_pbar==False:
+                tqdm.write('{} Loss: {:.4f}'.format(phase, epoch_loss))
             
             # deep copy the model
             if phase == 'val' and epoch_loss < best_loss:
-                print('Saving model... current loss:' + str(round(epoch_loss,5)) + ' < best loss: ' + str(round(best_loss,5)))
+                tqdm.write('Saving model... current loss:' + str(round(epoch_loss,5)) + ' < best loss: ' + str(round(best_loss,5)))
                 best_loss = epoch_loss
-                print("Backing up the model")
+                tqdm.write("Backing up the model")
                 temp_file = open(weight_file,"wb")
                 torch.save(model.state_dict(),temp_file)
 
-                
-        print()
+        if no_pbar==False:        
+            print()
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
@@ -169,3 +202,41 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
     temp_file = open(weight_file,"rb")
     model.load_state_dict(torch.load(temp_file))
     return model, train_losses, val_losses     
+
+def evaluate_model(model,dataloader,model_type="S",no_pbar=False):
+    
+    tqdm.write('Performing Inference...')
+    
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        tqdm.write("using GPU acceleration")
+    
+    model = model.to(device,dtype=torch.float)
+    model.eval()
+    
+    if dataloader.dataset.include_torque == False:
+        predictions = np.empty((0,3))
+    else:
+        predictions = np.empty((0,6))
+    
+    with tqdm(total=len(dataloader),leave=True,miniters=1,disable=no_pbar) as pbar:
+        for inputs, aug_inputs, labels in dataloader:
+            
+            if model_type !="S":
+                inputs = inputs.to(device,dtype=torch.float)
+            if model_type != "V":
+                aug_inputs = aug_inputs.to(device,dtype=torch.float)
+            labels = labels.to(device,dtype=torch.float)
+            
+            if model_type == "V":
+                outputs = model(inputs)
+            elif model_type == "VS":
+                outputs= model(inputs,aug_inputs)
+            else:
+                outputs = model(aug_inputs)
+                          
+            predictions = np.vstack((predictions,outputs.cpu().detach().numpy()))
+            pbar.update(1)
+            
+    return predictions
+            
