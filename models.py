@@ -19,6 +19,12 @@ import pdb
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
+try:
+    import torch_xla
+    import torch_xla.core.xla_model as xm
+except:
+    pass
+
 class StateVisionModel(nn.Module):
   
   '''
@@ -88,14 +94,18 @@ def StateModel(input_dim,output_dim):
     
     return model
 
-def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False):
+def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False, use_tpu=False):
     
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        tqdm.write("using GPU acceleration")
+    if use_tpu:
+        print("using TPU acceleration, model and optimizer should already be loaded onto tpu device")
+        pass
+    else:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            print("using GPU acceleration")
     
-    model = model.to(device,dtype=torch.float)
-    
+        model = model.to(device,dtype=torch.float)
+
     since = time.time()
     best_loss = np.Inf
     
@@ -167,8 +177,10 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                   
                   
                   loss.backward()
-                  #xm.optimizer_step(optimizer,barrier=True)
-                  optimizer.step()
+                  if use_tpu:
+                      xm.optimizer_step(optimizer,barrier=True)
+                  else:
+                      optimizer.step()
                 else :
                   torch.set_grad_enabled(False)
                   
