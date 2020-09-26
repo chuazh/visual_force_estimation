@@ -16,6 +16,7 @@ import PIL.Image as im
 import numpy as np
 import glob
 import natsort
+from scipy.spatial.transform import Rotation as R
 
 class ImgDataset(data.Dataset):
     
@@ -94,7 +95,7 @@ class ImgDataset(data.Dataset):
             x = self.transform(x)
 
         if self.custom_state is None:
-            x2 = self.label_array[index][7:]
+            x2 = self.label_array[index][7:61]
         else:
             x2 = self.label_array[index][self.custom_state]
         
@@ -124,7 +125,7 @@ class ImgDataset(data.Dataset):
     def read_labels(self,label_dir,data_sets):
         '''loads all the label data, accounting for excluded sets'''
         
-        file_list = natsort.humansorted(glob.glob(label_dir + "/labels_full_*.txt"))
+        file_list = natsort.humansorted(glob.glob(label_dir + "/labels_*.txt"))
         label_list = []
         
         if data_sets is not None:
@@ -160,7 +161,7 @@ class ImgDataset(data.Dataset):
 class StateDataset(data.Dataset):
     
     '''Characterizes a dataset for PyTorch'''
-    def __init__(self, label_dir, data_sets = None, eval_params = None , include_torque = False, custom_state = None):
+    def __init__(self, label_dir, data_sets = None, eval_params = None , include_torque = False, spatial_force=False , custom_state = None):
         '''
         Initialization
            exclude_index is a list denoting which datasets to exclude indexed
@@ -169,6 +170,7 @@ class StateDataset(data.Dataset):
         self.label_dir = label_dir
         self.include_torque = include_torque
         self.custom_state= custom_state
+        self.spatial_force = spatial_force
         self.label_array = self.read_labels(self.label_dir,data_sets)
         if eval_params is None:
             self.mean,self.stdev = self.normalize_state()
@@ -183,7 +185,7 @@ class StateDataset(data.Dataset):
     def __getitem__(self, index):
         'Generates one sample of data'
         if self.custom_state is None:
-            x = self.label_array[index][7:]
+            x = self.label_array[index][7:61]
         else:
             x = self.label_array[index][self.custom_state]
         if self.include_torque:
@@ -198,16 +200,20 @@ class StateDataset(data.Dataset):
     def read_labels(self,label_dir,data_sets):
         '''loads all the label data, accounting for excluded sets'''
         
-        file_list = natsort.humansorted(glob.glob(label_dir + "/labels_full_*.txt"))
+        file_list = natsort.humansorted(glob.glob(label_dir + "/labels_*.txt"))
         label_list = []
         
         if data_sets is not None:
             for i in data_sets:
                 data = np.loadtxt(file_list[i-1],delimiter=",")
+                if self.spatial_force:
+                    data = realign_forces(data, np.array([10,11,12,13]), np.array([55,56,57]))
                 label_list.append(data)
         else:
             for i in range(len(file_list)):
                 data = np.loadtxt(file_list[i],delimiter=",")
+                if self.spatial_force:
+                    data = realign_forces(data, np.array([10,11,12,13]), np.array([55,56,57]))
                 label_list.append(data)
         
         labels = np.concatenate(label_list,axis=0)
@@ -231,28 +237,56 @@ class StateDataset(data.Dataset):
         
         return mean,stdev
     
+def realign_forces(dataset,pose_idx,psm_force_idx):
+    
+    '''Function align the wrench forces from the ee frame to the spatial/base frame
+    Input: dataset = N x F numpy array where F is the full number of features
+           pose_idx= column index containing the pose data as quaternions
+           force_idx = column index containing the body wrench data
+    Output: dataset NxF numpy array where the force_idx columns are overwritten with the transformed forces. 
+    '''
+    
+    # retrieve the relevant data from the dataset
+    pose_quaternions = R.from_quat(dataset[:,pose_idx]) # this is the ee pose in spatial frame
+    body_forces = dataset[:,psm_force_idx] # this are cartesian forces in ee frame
+    
+    # we need to rotate the body forces into the spatial frame
+    pose_quaternions_inv = pose_quaternions.inv() # get the reverse mappings : body to spatial
+    # apply the rotations to the forces
+    spatial_forces = pose_quaternions_inv.apply(body_forces)
+    
+    # overwrite the forces in the dataset
+    dataset[:,psm_force_idx] = spatial_forces
+    
+    return dataset
+    
+    
 def init_dataset(train_list,val_list,test_list,model_type,config_dict):
     
     file_dir = config_dict['file_dir']
     include_torque = config_dict['include_torque']
     custom_state = config_dict['custom_state']
     batch_size = config_dict['batch_size']
+    spatial_force = config_dict['spatial_forces']
     
     if model_type == "S":
         train_set = StateDataset(file_dir,
                                  data_sets=train_list,
                                  include_torque = include_torque,
-                                 custom_state= custom_state)
+                                 custom_state= custom_state,
+                                 spatial_force=spatial_force)
         val_set = StateDataset(file_dir,
                                 data_sets=val_list,
                                 eval_params=(train_set.mean,train_set.stdev),
                                 include_torque = include_torque,
-                                custom_state= custom_state)
+                                custom_state= custom_state,
+                                spatial_force=spatial_force)
         test_set = StateDataset(file_dir,
                                 data_sets=test_list,
                                 eval_params=(train_set.mean,train_set.stdev),
                                 include_torque = include_torque,
-                                custom_state= custom_state)
+                                custom_state= custom_state,
+                                spatial_force=spatial_force)
     else:
         crop_list = config_dict['crop_list']
         trans_function = config_dict['trans_function']

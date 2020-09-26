@@ -152,7 +152,7 @@ file_dir = '../ML dvrk 081320'
 trans_function = transforms.Compose([transforms.Resize((224,224)),
                                      transforms.ToTensor(),
                                      transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
-
+force_align=True
 train_list = [1,2,3,5,6]
 val_list = [4,7]
 config_dict={'file_dir':file_dir,
@@ -160,9 +160,10 @@ config_dict={'file_dir':file_dir,
              'custom_state': None,
              'batch_size': 16,
              'crop_list': crop_list,
+             'spatial_forces': force_align,
              'trans_function': trans_function}
 
-model_type = "VS"
+model_type = "S"
 feat_extract = True
 
 weight_file = "best_modelweights_ablate_temp.dat"
@@ -175,12 +176,17 @@ if __name__ == "__main__":
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
     
+    weight_file =  weight_file = "best_modelweights_" + model_type
+    
     if model_type!="S" and feat_extract:
-        model_weights = torch.load("best_modelweights_"+model_type+"_ft.dat")
-    else:
-        model_weights = torch.load("best_modelweights_"+model_type+".dat")
+        weight_file="best_modelweights_" + model_type + "_ft"
+        
+    if force_align and model_type!= "V" :
+        weight_file = weight_file + "_faligned"
+        
+    weight_file = weight_file + ".dat"
    
-    model.load_state_dict(model_weights)
+    model.load_state_dict(torch.load(weight_file))
 
     removed_features,param_counts,perf_metrics =run_ablations(model,num_ablations=30)
     
@@ -190,7 +196,7 @@ if __name__ == "__main__":
     metrics = ['ME','RMSEx','RMSEy','RMSEz'] + ['nRMSEx','nRMSEy','nRMSEz']
     result_frame = plot_ablations_metrics(metrics, perf_metrics, param_counts, ['orig']+removed_features)
     
-    save_file = open('091120_ablation_vision.df','wb')
+    save_file = open('091120_ablation_faligned.df','wb')
     pickle.dump(result_frame,save_file)
     save_file.close()
     #stuff to do:

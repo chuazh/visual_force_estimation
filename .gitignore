@@ -1,2 +1,4 @@
 *.dat
 *.df
+runs
+__pycache__

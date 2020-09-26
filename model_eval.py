@@ -155,6 +155,7 @@ def compute_and_plot_gbp(gbp_data,feature_list,aggregate_force=True,suppress_plo
         else:
             sns.catplot(data=df_long,x='feature',y='gbp',hue='axis',kind='bar')
         f = plt.gcf()
+        plt.xticks(rotation=70)
         f.tight_layout()
     
     return df_long
@@ -182,7 +183,22 @@ def plot_heatmaps(gbp_data,predictions,labels,feature_list):
         
         fig.tight_layout()
         
-        
+def summarize_metrics(metrics_list,metric,labels):
+    
+    # create the dataframe
+    
+    for metric_dict,condition in zip(metrics_list,labels):
+        metric_dict['condition'] = condition
+    
+    df = pd.DataFrame(metrics_list)
+    df['Per Axis RMSE'].apply(pd.Series)
+    df['Per Axis nRMSE'].apply(pd.Series)
+    
+    sns.catplot(x='condition',y=metric,data=df,kind='bar')
+    
+    return df
+ 
+       
 'global variable'
 qty = ['px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
        'q1','q2','q3','q4','q5','q6','q7',
@@ -195,8 +211,9 @@ qty = ['px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
 
 if __name__ == "__main__":
 
-    model_type = "VS"
+    model_type = "S"
     feat_extract = True
+    force_align = False
     
     crop_list = []
     '''
@@ -210,8 +227,9 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,8):
-        crop_list.append((50,350,300,300))
+    for i in range(1,24):
+        #crop_list.append((50,350,300,300))
+        crop_list.append((270-150,480-150,300,300))
         
     # Define a transformation for the images
     trans_function = transforms.Compose([transforms.Resize((224,224)),
@@ -224,34 +242,52 @@ if __name__ == "__main__":
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
     
+    weight_file =  weight_file = "best_modelweights_" + model_type
+    
     if model_type!="S" and feat_extract:
-        model_weights = torch.load("best_modelweights_"+model_type+"_ft.dat")
-    else:
-        model_weights = torch.load("best_modelweights_"+model_type+".dat")
-    model.load_state_dict(model_weights)
+        weight_file="best_modelweights_" + model_type + "_ft"
+        
+    if force_align and model_type!= "V" :
+        weight_file = weight_file + "_faligned"
+        
+    weight_file = weight_file + "_L1-e6.dat"
+    
+    model.load_state_dict(torch.load(weight_file))
     
     # load the dataset
-    file_dir = '../ML dvrk 081320' # define the file directory for dataset
-    train_list = [1,2,3,5,6]
-    test_list = [4,7]
+    file_dir = '../experiment_data' # define the file directory for dataset
+    train_list = [1]
+    val_list = [1]
     config_dict={'file_dir':file_dir,
-                 'include_torque': False,
-                 'custom_state': None,
-                 'batch_size': 16,
-                 'crop_list': crop_list,
-                 'trans_function': trans_function}
+             'include_torque': False,
+             'spatial_forces': force_align,
+             'custom_state': None,
+             'batch_size': 128,
+             'crop_list': crop_list,
+             'trans_function': trans_function}
     
-    loader_dict,loader_sizes = dat.init_dataset(train_list,test_list,test_list,model_type,config_dict)
-    test_loader = loader_dict['test']
+    test_list_full = [2,6,9,13,16,20]
+    condition_list = ['center','center','right','right','left','left']
+    #%%   
+    predictions_list = []
+    metrics_list = []
+    for test in test_list_full:
+        test_list = [test]
+        loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+        test_loader = loader_dict['test']
     
-    plt.close('all')
+        #plt.close('all')
+        predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
+        predictions_list.append(predictions)
+        
     # compute the loss and other performance metrics
-    predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
-    compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4])
+        metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4])
+        metrics_list.append(metrics)
+    #%%    
     plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
     plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
-    
     gbp_data = compute_GBP(model,test_loader,model_type=model_type)
     plot_heatmaps(gbp_data,predictions,test_loader.dataset.label_array[:,1:4],qty)
-    df_gbp_means = compute_and_plot_gbp(gbp_data,qty,True)
+    df_gbp_means = compute_and_plot_gbp(gbp_data,qty,False)
     df_gbp_means.groupby('feature').mean().sort_values(by='gbp',ascending=False)
+

@@ -16,6 +16,8 @@ import time
 import numpy as np
 from tqdm import tqdm
 import pdb
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 
 class StateVisionModel(nn.Module):
   
@@ -86,7 +88,7 @@ def StateModel(input_dim,output_dim):
     
     return model
 
-def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", no_pbar=False):
+def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False):
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
@@ -97,11 +99,18 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
     since = time.time()
     best_loss = np.Inf
     
-    train_losses = np.zeros(num_epochs*dataset_sizes['train'])
-    val_losses = np.zeros(num_epochs*dataset_sizes['val'])
+    #train_losses = np.zeros(num_epochs*dataset_sizes['train'])
+    #val_losses = np.zeros(num_epochs*dataset_sizes['val'])
+    train_losses = np.zeros(num_epochs*len(dataloaders['train']))
+    val_losses = np.zeros(num_epochs*len(dataloaders['val']))
     
+    it_val = 0
+    it_train = 0
+    
+    writer = SummaryWriter()
+
     for epoch in range(num_epochs):
-        if no_pbar==False:
+        if suppress_log==False:
             print('Epoch {}/{}'.format(epoch+1, num_epochs))
             print('-' * 10)
 
@@ -111,85 +120,119 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                 model.train()  # Set model to training mode
             else:
                 model.eval()   # Set model to evaluate mode
+                # initialize the predictions
+                if dataloaders[phase].dataset.include_torque:
+                    predictions = np.empty((0,6))
+                else:
+                    predictions = np.empty((0,3))
 
             running_loss = 0.0
 
             # Iterate over data.
-            it = 1
             batch_size = 0
+            it = 1
+            
+            for inputs, aug_inputs, labels in dataloaders[phase]:
+                # zero the parameter gradients
+                optimizer.zero_grad()
+                
+                if model_type !="S":
+                    inputs = inputs.to(device,dtype=torch.float)
+                
+                if model_type != "V":
+                    aug_inputs = aug_inputs.to(device,dtype=torch.float)
+                    
+                labels = labels.to(device,dtype=torch.float)
 
-            with tqdm(total=len(dataloaders[phase]),leave=True,miniters=1,disable=no_pbar) as pbar:
-                for inputs, aug_inputs, labels in dataloaders[phase]:
-                    # zero the parameter gradients
-                    optimizer.zero_grad()
-                    
-                    if model_type !="S":
-                        inputs = inputs.to(device,dtype=torch.float)
-                    
-                    if model_type != "V":
-                        aug_inputs = aug_inputs.to(device,dtype=torch.float)
-                        
-                    labels = labels.to(device,dtype=torch.float)
-    
-                    # forward
-                    # track history if only in train
-                    if phase == 'train':
-                      torch.set_grad_enabled(True)
+                # forward
+                # track history if only in train
+                if phase == 'train':
+                  torch.set_grad_enabled(True)
+                  
+                  if model_type == "V":
+                      outputs = model(inputs)
+                  elif model_type == "VS":
+                      outputs= model(inputs,aug_inputs)
+                  else:
+                      outputs = model(aug_inputs)
                       
-                      if model_type == "V":
-                          outputs = model(inputs)
-                      elif model_type == "VS":
-                          outputs= model(inputs,aug_inputs)
-                      else:
-                          outputs = model(aug_inputs)
-                          
-                          
-                      loss = criterion(outputs,labels)
-                      loss.backward()
-                      #xm.optimizer_step(optimizer,barrier=True)
-                      optimizer.step()
-                    else :
-                      torch.set_grad_enabled(False)
+                  loss = criterion(outputs,labels)
+                  
+                  if L1_loss:
+                      L1 = 0
+                      for param in model.parameters():
+                          if param.requires_grad:
+                              L1 += L1_loss*torch.sum(torch.abs(param))
+                      loss = loss+L1 
+                  
+                  
+                  loss.backward()
+                  #xm.optimizer_step(optimizer,barrier=True)
+                  optimizer.step()
+                else :
+                  torch.set_grad_enabled(False)
+                  
+                  if model_type == "V":
+                      outputs = model(inputs)
+                  elif model_type == "VS":
+                      outputs= model(inputs,aug_inputs)
+                  else:
+                      outputs = model(aug_inputs)
                       
-                      if model_type == "V":
-                          outputs = model(inputs)
-                      elif model_type == "VS":
-                          outputs= model(inputs,aug_inputs)
-                      else:
-                          outputs = model(aug_inputs)
-                          
-                      loss = criterion(outputs,labels)
-                    
-                    # statistics
-                    running_loss += loss.item() #* inputs.size(0) # multiply by the number of elements to get back the total loss, usually the loss function outputs the mean
-                    batch_size += inputs.size(0)
-                    avg_loss = running_loss/batch_size
-                    
-                    if phase== 'train':
-                        train_losses[it] = avg_loss
-                    else:
-                        val_losses[it] = avg_loss
-                    '''
-                    if it%10 == 0:
-                      print('average loss for batch ' + str(it)+ ' : ' + str(avg_loss))'''
-                    it += 1
-                    pbar.set_postfix({'loss': avg_loss})
-                    pbar.update(1)
+                  loss = criterion(outputs,labels)
+                  predictions = np.vstack((predictions,outputs.cpu().detach().numpy()))
+                
+                # statistics
+                running_loss += loss.item() #* inputs.size(0) # multiply by the number of elements to get back the total loss, usually the loss function outputs the mean
+                batch_size += inputs.size(0)
+                avg_loss = running_loss/batch_size
+                
+                if phase== 'train':
+                    train_losses[it_train] = avg_loss
+                    writer.add_scalar('Loss/train',avg_loss,it_train)
+                    it_train += 1
+                else:
+                    val_losses[it_val] = avg_loss
+                    writer.add_scalar('Loss/val',avg_loss,it_val)
+                    it_val += 1
+                
+                if it%100 == 0 and suppress_log==False:
+                  print('average loss for batch ' + str(it)+ ' : ' + str(avg_loss))
+            
+                it +=1
 
             epoch_loss = running_loss / dataset_sizes[phase] #divide by the total size of our dataset to get the mean loss per instance
             
-            if no_pbar==False:
-                tqdm.write('{} Loss: {:.4f}'.format(phase, epoch_loss))
+            if phase=="train":
+                writer.add_scalar('ELoss/train',epoch_loss,epoch)
+            if phase=="val":
+                 writer.add_scalar('ELoss/val',epoch_loss,epoch)
+                 
+            
+            if suppress_log==False:
+                print('{} Loss: {:.4f}'.format(phase, epoch_loss))
             
             # deep copy the model
             if phase == 'val' and epoch_loss < best_loss:
-                tqdm.write('Saving model... current loss:' + str(round(epoch_loss,5)) + ' < best loss: ' + str(round(best_loss,5)))
+                
+                if hyperparam_search==False:
+                    print('Saving model... current loss:' + str(round(epoch_loss,5)) + ' < best loss: ' + str(round(best_loss,5)))
+                    print("Backing up the model")
+                    temp_file = open(weight_file,"wb")
+                    torch.save(model.state_dict(),temp_file)
+                    fig,ax = plt.subplots(3,1,sharex=True,figsize=(50,10))
+                    plt.ioff()
+                    for f_ax in range(3):
+                        ax[f_ax].plot(dataloaders[phase].dataset.label_array[:,f_ax+1])
+                        ax[f_ax].plot(predictions[:,f_ax],linewidth=1)
+                    writer.add_figure('valPred/figure',fig,global_step=epoch,close=True)
+                
+                else:
+                    print('current loss:' + str(round(epoch_loss,5)) + ' < best loss: ' + str(round(best_loss,5)))
+                    
                 best_loss = epoch_loss
-                tqdm.write("Backing up the model")
-                temp_file = open(weight_file,"wb")
-                torch.save(model.state_dict(),temp_file)
 
-        if no_pbar==False:        
+        if suppress_log==False:        
             print()
 
     time_elapsed = time.time() - since
@@ -198,10 +241,14 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
     print('Best val loss: {:4f}'.format(best_loss))
 
     # load best model weights
-    temp_file.close()
-    temp_file = open(weight_file,"rb")
-    model.load_state_dict(torch.load(temp_file))
-    return model, train_losses, val_losses     
+    if hyperparam_search==False:
+        temp_file.close()
+        temp_file = open(weight_file,"rb")
+        model.load_state_dict(torch.load(temp_file))
+    
+    return model, train_losses, val_losses, best_loss     
+
+
 
 def evaluate_model(model,dataloader,model_type="S",no_pbar=False):
     

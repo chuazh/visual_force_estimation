@@ -44,15 +44,21 @@ def imshow(inp, title=None):
 
 if __name__ == "__main__":
     
-    file_dir = '../ML dvrk 081320' # define the file directory for dataset
+    file_dir = '../experiment_data' # define the file directory for dataset
     
     model_type = "S"
     feat_extract = True
+    force_align = False
+    
+    weight_file =  weight_file = "best_modelweights_" + model_type
     
     if model_type!="S" and feat_extract:
-        weight_file="best_modelweights_" + model_type + "_ft.dat"
-    else:
-        weight_file = "best_modelweights_" + model_type + ".dat"
+        weight_file="best_modelweights_" + model_type + "_ft"
+        
+    if force_align and model_type!= "V" :
+        weight_file = weight_file + "_faligned"
+        
+    weight_file = weight_file + ".dat"
     
     # Define a transformation for the images
     trans_function = transforms.Compose([transforms.Resize((224,224)),
@@ -66,32 +72,29 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,8):
-        crop_list.append((50,350,300,300))
+    for i in range(1,24):
+        #crop_list.append((50,350,300,300))
+        crop_list.append((270-150,480-150,300,300))
         
-    '''
-    for i in range(1,14):
-        crop_list.append((57,320,462,462))
-    for i in range(14,17):
-        crop_list.append((40,400,462,462))
-    for i in range(17,20):
-        crop_list.append((57,180,462,462))
-    for i in range(20,23):
-        crop_list.append((70,145,462,462))
-    crop_list.append((30,250,462,462))
-    '''
-    train_list = [1,2,3,5,6]
-    val_list = [4,7]
+    train_list = [1,3,5,7,
+                  8,10,12,14,
+                  15,17,19,21]
+    val_list = [2,6,
+                9,13,
+                16,20]
+    test_list = [4,11,18,
+                 22,23,24,25,26,27,28,29,32,33]
     config_dict={'file_dir':file_dir,
                  'include_torque': False,
+                 'spatial_forces': force_align,
                  'custom_state': None,
-                 'batch_size': 128,
+                 'batch_size': 32,
                  'crop_list': crop_list,
                  'trans_function': trans_function}
     
     dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,val_list,model_type,config_dict)
-    
-    #generate_grid(train_set,64)
+    #%%
+    #generate_grid(dataloaders['train'].dataset,64)
 
     # define model
     if model_type == "VS":
@@ -101,12 +104,14 @@ if __name__ == "__main__":
     # create loss function
     criterion = nn.MSELoss(reduction='sum')
     # define optimization method
-    optimizer = opt.Adam(model.parameters(),lr=0.01)
-    model,train_history,val_history = mdl.train_model(model,
+    optimizer = opt.Adam(model.parameters(),lr=0.001,weight_decay=0)
+    model,train_history,val_history,_ = mdl.train_model(model,
                                                          criterion, optimizer,
-                                                         dataloaders, dataset_sizes,
-                                                         num_epochs=50,
+                                                         dataloaders, dataset_sizes,  
+                                                         num_epochs=100,
+                                                         L1_loss=1e-1,
                                                          model_type= model_type,
-                                                         weight_file=weight_file,no_pbar=False)
+                                                         weight_file=weight_file,
+                                                         suppress_log=False)
     
     
