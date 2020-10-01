@@ -24,7 +24,7 @@ from tqdm import tqdm
 import pandas as pd
 import seaborn as sns
 
-def compute_loss_metrics(predictions,labels):
+def compute_loss_metrics(predictions,labels,condition,model_type):
     print()
     print("Summary Performance Statistics")
     print("-"*10)
@@ -47,11 +47,18 @@ def compute_loss_metrics(predictions,labels):
     print("Per Axis normalized RMSE: x:{0:.3f}, y:{1:.3f},z:{2:.3f}".format(normed_axis_RMSE[0],normed_axis_RMSE[1],normed_axis_RMSE[2]))
     print(' ')
     
-    output_dict = {'ME': mean_error,
+    output_dict = {'model': model_type,
+                   'condition': condition, 
+                   'ME': mean_error,
                    'nME': normed_mean_error,
-                   'Per Axis RMSE': per_axis_RMSE,
-                   'Per Axis nRMSE':normed_axis_RMSE}
+                   'Per Axis RMSEx': per_axis_RMSE[0],
+                   'Per Axis RMSEy': per_axis_RMSE[1],
+                   'Per Axis RMSEz': per_axis_RMSE[2],
+                   'Per Axis nRMSEx':normed_axis_RMSE[0],
+                   'Per Axis nRMSEy':normed_axis_RMSE[1],
+                   'Per Axis nRMSEz':normed_axis_RMSE[2]}
     
+    #return pd.DataFrame.from_dict(output_dict)
     return output_dict
 
 def plot_trajectories(predictions,labels):
@@ -227,7 +234,7 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,24):
+    for i in range(1,34):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -250,7 +257,7 @@ if __name__ == "__main__":
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
         
-    weight_file = weight_file + "_L1-e6.dat"
+    weight_file = weight_file + "L1_500epoch.dat"
     
     model.load_state_dict(torch.load(weight_file))
     
@@ -266,12 +273,34 @@ if __name__ == "__main__":
              'crop_list': crop_list,
              'trans_function': trans_function}
     
-    test_list_full = [2,6,9,13,16,20]
-    condition_list = ['center','center','right','right','left','left']
-    #%%   
+    
+    
+    #%%   Manual Plotting
+    '''
+    test_list = [2,6]  
+    loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+    test_loader = loader_dict['test']
+
+    #plt.close('all')
+    predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
+    # compute the loss and other performance metrics
+    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4])
+    
+    plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
+    plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
+    gbp_data = compute_GBP(model,test_loader,model_type=model_type)
+    plot_heatmaps(gbp_data,predictions,test_loader.dataset.label_array[:,1:4],qty)
+    df_gbp_means = compute_and_plot_gbp(gbp_data,qty,False)
+    df_gbp_means.groupby('feature').mean().sort_values(by='gbp',ascending=False)
+    '''
+    #%%  
+    
     predictions_list = []
     metrics_list = []
-    for test in test_list_full:
+    test_list_full = [2,6,9,13,16,20]
+    condition_list = ['center','center','right','right','left','left']
+    
+    for test,condition in zip(test_list_full,condition_list):
         test_list = [test]
         loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
         test_loader = loader_dict['test']
@@ -281,13 +310,26 @@ if __name__ == "__main__":
         predictions_list.append(predictions)
         
     # compute the loss and other performance metrics
-        metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4])
+        metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],condition,model_type)
         metrics_list.append(metrics)
-    #%%    
-    plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
-    plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
-    gbp_data = compute_GBP(model,test_loader,model_type=model_type)
-    plot_heatmaps(gbp_data,predictions,test_loader.dataset.label_array[:,1:4],qty)
-    df_gbp_means = compute_and_plot_gbp(gbp_data,qty,False)
-    df_gbp_means.groupby('feature').mean().sort_values(by='gbp',ascending=False)
+    
+    # create dataframe
+    df_metrics = pd.DataFrame(metrics_list)
+    
+    import pickle
+    df_filedir = 'df_'+model_type+'.df'
+    pickle.dump(df_metrics,open(df_filedir,'wb'))
 
+    #%% Visualization
+    
+    df_S = pickle.load(open('df_S.df','rb'))
+    df_VS = pickle.load(open('df_VS.df','rb'))
+    dyn_model_data = pickle.load(open('../dvrk_dynamic_model/dvrk_dynamics_identification/dynamic_model_preds.dat','rb'), encoding='latin1')
+    df_dyn = pd.DataFrame(dyn_model_data['metric_data'])
+    
+    
+    df_merge = pd.concat([df_S,df_dyn,df_VS])
+    df_merge = pd.concat([df_S,df_VS])
+    df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
+    sns.catplot(x='model',y='value',row='condition',hue='metric',data=df_merge,kind='bar')
+    

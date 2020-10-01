@@ -237,6 +237,12 @@ class StateDataset(data.Dataset):
         
         return mean,stdev
     
+    def mask_labels(self,feature_set):
+        
+        '''masks the state dataset by setting the features to zero'''
+        self.label_array[:,feature_set] = 0.0
+        
+    
 def realign_forces(dataset,pose_idx,psm_force_idx):
     
     '''Function align the wrench forces from the ee frame to the spatial/base frame

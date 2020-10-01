@@ -49,7 +49,7 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,24):
+    for i in range(1,34):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -137,4 +137,36 @@ if __name__ == "__main__":
             
     print("L2 Reg search completed, best L2 decay :{}".format(best_reg))   
     
+    weight_decay_list = [0,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7]
+    best_loss = np.inf
+    best_reg_l1 = 0
     
+    for reg in weight_decay_list:
+        print('reg:{}'.format(reg))
+        # define model
+        if model_type == "VS":
+            model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
+        elif model_type == "S":
+            model  = mdl.StateModel(54, 3)
+        # create loss function
+        criterion = nn.MSELoss(reduction='sum')
+    
+        # define optimization method
+        optimizer = opt.Adam(model.parameters(),lr=best_lr,weight_decay=0) # if we want L2 loss set reg here
+        model,train_history,val_history,val_loss = mdl.train_model(model,
+                                                             criterion, optimizer,
+                                                             dataloaders, dataset_sizes,  
+                                                             num_epochs=50,
+                                                             model_type= model_type,
+                                                             weight_file=weight_file,
+                                                             suppress_log=False,
+                                                             L1_loss=reg, # for L1 loss set it here
+                                                             hyperparam_search=True)
+        
+        if val_loss<best_loss:
+            print('found better reg: {}, loss:{}'.format(reg,val_loss))
+            print('previous best reg:{}, loss:{}'.format(best_reg_l1,best_loss))
+            best_loss = val_loss
+            best_reg_l1 = reg
+            
+    print("L1 Reg search completed, best L2 decay :{}".format(best_reg))       

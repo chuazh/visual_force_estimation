@@ -1,52 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Sep  2 14:11:52 2020
+Created on Mon Sep 28 13:02:35 2020
 
 @author: charm
 """
 
-
-import dataset_lib as dat
 import models as mdl
-import torchvision.transforms as transforms
-import torch.utils.data as data
-import torchvision
-import matplotlib.pyplot as plt
+import model_eval
+import dataset_lib as dat
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.optim as opt
-import numpy as np
+import torchvision.transforms as transforms
+import seaborn as sns
+import pandas as pd
+import pickle
 
-def generate_grid(dataset,num_imgs=64):
-    
-    dataloader = data.DataLoader(dataset,batch_size=num_imgs,shuffle=True)
-
-    # Get a batch of training data
-    inputs, aug_inputs ,labels = next(iter(dataloader))
-    
-    # Make a grid from batch
-    out = torchvision.utils.make_grid(inputs)
-    imshow(out)
-    
-def imshow(inp, title=None):
-    """Imshow for Tensor."""
-    inp = inp.numpy().transpose((1, 2, 0))
-    #mean = np.array([0.485, 0.456, 0.406])
-    #std = np.array([0.229, 0.224, 0.225])
-    #inp = std * inp + mean
-    #inp = np.clip(inp, 0, 1)
-    fig,ax = plt.subplots(figsize = (10,10))
-    ax.imshow(inp)
-    if title is not None:
-        plt.title(title)
-    plt.pause(0.001)  # pause a bit so that plots are updated
-
+qty = ['t','fx','fy','fz','tx','ty','tz',
+       'px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
+       'q1','q2','q3','q4','q5','q6','q7',
+       'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
+       'tq1','tq2','tq3','tq4','tq5','tq6','tq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d',
+       'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
+       'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6']
+       
 
 if __name__ == "__main__":
     
     file_dir = '../experiment_data' # define the file directory for dataset
     
-    model_type = "V"
+    model_type = "S"
     feat_extract = True
     force_align = False
     
@@ -57,8 +46,9 @@ if __name__ == "__main__":
         
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
-        
-    weight_file = weight_file + "_L1_500epoch.dat"
+    
+    pretrained_file = weight_file +"_L1_500epoch.dat"
+    weight_file = weight_file + "_ablate_L1_P.dat"
     
     # Define a transformation for the images
     trans_function = transforms.Compose([transforms.Resize((224,224)),
@@ -93,17 +83,33 @@ if __name__ == "__main__":
                  'trans_function': trans_function}
     
     dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,val_list,model_type,config_dict)
-    #%%
-    #generate_grid(dataloaders['train'].dataset,64)
-
-    # define model
+    
+    #%% First ablation: remove the force data
+    
+    force_features = ['tq1','tq2','tq3','tq4','tq5','tq6','tq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d',
+       'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
+       'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz']
+    
+    pos_features = ['px','py','pz','qx','qy','qz','qw',
+       'vx','vy','vz','wx','wy','wz',
+       'q1','q2','q3','q4','q5','q6','q7',
+       'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
+    
+    mask = np.isin(qty,pos_features,invert=False)
+    #mask = np.isin(qty,force_features,invert=False)
+    
+    for loader in dataloaders.values():
+        loader.dataset.mask_labels(mask)
+    
     if model_type == "VS":
         model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
-    elif model_type == "V":
-        model = mdl.VisionModel(3)
     
+    pretrained_weights = torch.load(pretrained_file)
+    #model.load_state_dict(pretrained_weights)
     # create loss function
     criterion = nn.MSELoss(reduction='sum')
     # define optimization method
@@ -116,5 +122,4 @@ if __name__ == "__main__":
                                                          model_type= model_type,
                                                          weight_file=weight_file,
                                                          suppress_log=False)
-    
     

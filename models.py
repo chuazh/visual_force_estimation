@@ -68,6 +68,25 @@ class StateVisionModel(nn.Module):
 
     return x
 
+def VisionModel(output_dim,layer_depth=4):
+    
+    model = models.resnet50(pretrained=True)
+    layer_num = 0
+    
+    for param in model.parameters():
+        if layer_num < layer_depth:
+            param.requires_grad = False
+            layer_num = layer_num + 1
+
+    num_features = model.fc.in_features # get the input size to the FC layer
+    model.fc = nn.Linear(num_features,output_dim) # directly map it to the 
+    
+    #state_dict = torch.load('../ML dvrk 072820/train124_val35_modelweights.dat')
+    #model_ft.load_state_dict(state_dict)
+    
+    return model
+
+
 def StateModel(input_dim,output_dim):
     
     model = nn.Sequential(
@@ -94,11 +113,11 @@ def StateModel(input_dim,output_dim):
     
     return model
 
-def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False, use_tpu=False):
+def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False, use_tpu=False, tensorboard = True):
     
     if use_tpu:
         print("using TPU acceleration, model and optimizer should already be loaded onto tpu device")
-        pass
+        device = xm.xla_device()
     else:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         if torch.cuda.is_available():
@@ -117,7 +136,8 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
     it_val = 0
     it_train = 0
     
-    writer = SummaryWriter()
+    if tensorboard:
+        writer = SummaryWriter()
 
     for epoch in range(num_epochs):
         if suppress_log==False:
@@ -201,11 +221,13 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                 
                 if phase== 'train':
                     train_losses[it_train] = avg_loss
-                    writer.add_scalar('Loss/train',avg_loss,it_train)
+                    if tensorboard:
+                        writer.add_scalar('Loss/train',avg_loss,it_train)
                     it_train += 1
                 else:
                     val_losses[it_val] = avg_loss
-                    writer.add_scalar('Loss/val',avg_loss,it_val)
+                    if tensorboard:
+                        writer.add_scalar('Loss/val',avg_loss,it_val)
                     it_val += 1
                 
                 if it%100 == 0 and suppress_log==False:
@@ -215,10 +237,11 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
 
             epoch_loss = running_loss / dataset_sizes[phase] #divide by the total size of our dataset to get the mean loss per instance
             
-            if phase=="train":
-                writer.add_scalar('ELoss/train',epoch_loss,epoch)
-            if phase=="val":
-                 writer.add_scalar('ELoss/val',epoch_loss,epoch)
+            if tensorboard:
+                if phase=="train":
+                    writer.add_scalar('ELoss/train',epoch_loss,epoch)
+                if phase=="val":
+                     writer.add_scalar('ELoss/val',epoch_loss,epoch)
                  
             
             if suppress_log==False:
@@ -232,19 +255,23 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                     print("Backing up the model")
                     temp_file = open(weight_file,"wb")
                     torch.save(model.state_dict(),temp_file)
-                    fig,ax = plt.subplots(3,1,sharex=True,figsize=(50,10))
-                    plt.ioff()
-                    for f_ax in range(3):
-                        ax[f_ax].plot(dataloaders[phase].dataset.label_array[:,f_ax+1])
-                        ax[f_ax].plot(predictions[:,f_ax],linewidth=1)
-                    writer.add_figure('valPred/figure',fig,global_step=epoch,close=True)
+                    if tensorboard:
+                        fig,ax = plt.subplots(3,1,sharex=True,figsize=(50,10))
+                        plt.ioff()
+                        for f_ax in range(3):
+                            ax[f_ax].plot(dataloaders[phase].dataset.label_array[:,f_ax+1])
+                            ax[f_ax].plot(predictions[:,f_ax],linewidth=1)
+                        writer.add_figure('valPred/figure',fig,global_step=epoch,close=True)
                 
                 else:
                     print('current loss:' + str(round(epoch_loss,5)) + ' < best loss: ' + str(round(best_loss,5)))
                     
                 best_loss = epoch_loss
 
-        if suppress_log==False:        
+        if suppress_log==False:
+            time_elapsed = time.time() - since
+            print('Epoch runtime {:.0f}m {:.0f}s'.format(
+                time_elapsed // 60, time_elapsed % 60))
             print()
 
     time_elapsed = time.time() - since
@@ -259,7 +286,6 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
         model.load_state_dict(torch.load(temp_file))
     
     return model, train_losses, val_losses, best_loss     
-
 
 
 def evaluate_model(model,dataloader,model_type="S",no_pbar=False):

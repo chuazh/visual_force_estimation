@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     model_type = "VS"
     feat_extract = True
-    force_align = True
+    force_align = False
     
     crop_list = []
     '''
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,10):
+    for i in range(1,34):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -168,9 +168,9 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load(weight_file))
     
     # load the dataset
-    file_dir = '../test_run_091820' # define the file directory for dataset
+    file_dir = '../experiment_data' # define the file directory for dataset
     train_list = [1,2,3,4,5,7,8]
-    test_list = [3]
+    test_list = [2,6,9,13,16,20]
     config_dict={'file_dir':file_dir,
                  'include_torque': False,
                  'custom_state': None,
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     target_layer = model.cnn._modules.get(finalconv_name)
     gradcam = GradCAM(model, target_layer)
     #%%
-    inputs,inputs_aug,_ = next(iter(loader_dict['train']))
+    inputs,inputs_aug,_ = next(iter(loader_dict['test']))
    
     mask, _ = gradcam((inputs.to(device,dtype=torch.double),inputs_aug.to(device,dtype=torch.double)),class_idx=None,retain_graph=True)  
     results_all = [[],[],[]]
@@ -203,4 +203,4 @@ if __name__ == "__main__":
         img = unnorm(inputs.squeeze())
         heatmap[xyz], results_all[xyz] = visualize_cam(mask[xyz], img,alpha=0.5)
         
-    plt.imshow(results_all[2].cpu().detach().numpy().transpose(1,2,0))
+    plt.imshow(results_all[0].cpu().detach().numpy().transpose(1,2,0))
