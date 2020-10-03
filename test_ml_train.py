@@ -46,8 +46,8 @@ if __name__ == "__main__":
     
     file_dir = '../experiment_data' # define the file directory for dataset
     
-    model_type = "V"
-    feat_extract = True
+    model_type = "S"
+    feat_extract = False
     force_align = False
     
     weight_file =  weight_file = "best_modelweights_" + model_type
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
         
-    weight_file = weight_file + "_L1_500epoch.dat"
+    weight_file = weight_file + ".dat"
     
     # Define a transformation for the images
     trans_function = transforms.Compose([transforms.Resize((224,224)),

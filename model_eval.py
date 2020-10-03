@@ -218,8 +218,8 @@ qty = ['px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
 
 if __name__ == "__main__":
 
-    model_type = "S"
-    feat_extract = True
+    model_type = "VS_deep"
+    feat_extract = False
     force_align = False
     
     crop_list = []
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,34):
+    for i in range(1,37):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -248,6 +248,8 @@ if __name__ == "__main__":
         model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
+    elif model_type == "VS_deep":
+        model = mdl.StateVisionModel_deep(30, 54, 3)
     
     weight_file =  weight_file = "best_modelweights_" + model_type
     
@@ -257,7 +259,7 @@ if __name__ == "__main__":
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
         
-    weight_file = weight_file + "L1_500epoch.dat"
+    weight_file = weight_file + ".dat"
     
     model.load_state_dict(torch.load(weight_file))
     
@@ -269,22 +271,22 @@ if __name__ == "__main__":
              'include_torque': False,
              'spatial_forces': force_align,
              'custom_state': None,
-             'batch_size': 128,
+             'batch_size': 32,
              'crop_list': crop_list,
              'trans_function': trans_function}
     
     
     
     #%%   Manual Plotting
-    '''
-    test_list = [2,6]  
+    
+    test_list = [34]  
     loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
     test_loader = loader_dict['test']
 
     #plt.close('all')
     predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
     # compute the loss and other performance metrics
-    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4])
+    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],'new_material',"VS")
     
     plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
     plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
@@ -292,44 +294,65 @@ if __name__ == "__main__":
     plot_heatmaps(gbp_data,predictions,test_loader.dataset.label_array[:,1:4],qty)
     df_gbp_means = compute_and_plot_gbp(gbp_data,qty,False)
     df_gbp_means.groupby('feature').mean().sort_values(by='gbp',ascending=False)
-    '''
+    
     #%%  
     
     predictions_list = []
     metrics_list = []
-    test_list_full = [2,6,9,13,16,20]
-    condition_list = ['center','center','right','right','left','left']
+    #test_list_full = [2,6,9,13,16,20]
+    #condition_list = ['center','center','right','right','left','left']
+    
+    test_list_full =  [4,11,18,22,23,24,25,26,27,28,29,32,33,34,36]
+    condition_list = ['center','right','left',
+                      'right_less','right_less',
+                      'right_more','right_more',
+                      'left_less','left_less',
+                      'left_more','left_more',
+                      'new_tool','new_tool',
+                      'new_material','new_material']
     
     for test,condition in zip(test_list_full,condition_list):
         test_list = [test]
         loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
         test_loader = loader_dict['test']
-    
         #plt.close('all')
         predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
         predictions_list.append(predictions)
         
     # compute the loss and other performance metrics
-        metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],condition,model_type)
+        metrics = compute_loss_metrics(predictions[10:-10,:],test_loader.dataset.label_array[10:-10,1:4],condition,model_type)
         metrics_list.append(metrics)
     
     # create dataframe
     df_metrics = pd.DataFrame(metrics_list)
     
     import pickle
-    df_filedir = 'df_'+model_type+'.df'
+    df_filedir = 'df_'+model_type+'_test.df'
     pickle.dump(df_metrics,open(df_filedir,'wb'))
 
     #%% Visualization
     
-    df_S = pickle.load(open('df_S.df','rb'))
-    df_VS = pickle.load(open('df_VS.df','rb'))
+    df_S = pickle.load(open('df_S_test.df','rb'))
+    #df_S = df_metrics
+    df_deep = pickle.load(open('df_VS_test.df','rb'))
+    df_VS = pickle.load(open('df_VS_test.df','rb'))
     dyn_model_data = pickle.load(open('../dvrk_dynamic_model/dvrk_dynamics_identification/dynamic_model_preds.dat','rb'), encoding='latin1')
     df_dyn = pd.DataFrame(dyn_model_data['metric_data'])
     
     
     df_merge = pd.concat([df_S,df_dyn,df_VS])
-    df_merge = pd.concat([df_S,df_VS])
+    #df_merge = pd.concat([df_S,df_VS])
     df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
-    sns.catplot(x='model',y='value',row='condition',hue='metric',data=df_merge,kind='bar')
+    sns.catplot(data=df_merge,x='model',y='value',col='condition',kind='bar')
+    #sns.catplot(x='model',y='value',col='condition',col_wrap=3,hue='metric',col_order=['right_less','right','right_more','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='center') & (df_merge['condition']!='new_tool')],kind='bar')
+    #sns.catplot(x='model',y='value',col='condition',hue='metric',col_wrap=3,data=df_merge.loc[(df_merge['condition']=='center') | (df_merge['condition']=='new_tool')|(df_merge['condition']=='new_material')],kind='bar')
+    df_merge.groupby(['metric','condition','model']).agg({'value':'mean'})
+
+    #%%
     
+    for i in range(3):
+        for k in range(3):
+            ax[i,k].plot(reference_force[10:-10,i])
+        ax[i,0].plot(predictions_VS[10:-10,i],linewidth=0.75)
+        ax[i,2].plot(predictions_S[10:-10,i],linewidth=0.75)
+        ax[i,1].plot(predictions_D[:,i],linewidth=0.75)

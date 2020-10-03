@@ -68,6 +68,43 @@ class StateVisionModel(nn.Module):
 
     return x
 
+class StateVisionModel_deep(nn.Module):
+  
+  '''
+  A state + vision model
+  cnn_out: the number of output states from the linear layer of the ResNet50 Model
+  augmented_in: the number of features from the state input vector
+  model_out: the number of output dimensions
+  '''
+  
+  def __init__(self,cnn_out,augmented_in,model_out,feature_extract=False,layer_depth=4):
+    super(StateVisionModel_deep,self).__init__()
+    self.cnn = models.resnet50(pretrained=True)
+
+    layer_num = 0
+    for param in self.cnn.parameters(): # this sets up fine tuning of the residual layers
+      if feature_extract:
+          param.requires_grad=False
+      else:
+          if layer_num < layer_depth :
+              param.requires_grad = False
+              layer_num += 1
+    
+    self.cnn.fc = nn.Linear(self.cnn.fc.in_features,cnn_out) # the fully connected layer will compress the output into 30 params
+    # create a few more layers to take use through the data
+    self.state = StateModel(cnn_out+augmented_in,model_out)
+
+    
+  def forward(self,image,data):
+    x1 = self.cnn(image)
+    x2 = data
+
+    x = torch.cat((x1,x2),dim=1)
+    x = self.state(x)
+
+    return x
+
+
 def VisionModel(output_dim,layer_depth=4):
     
     model = models.resnet50(pretrained=True)

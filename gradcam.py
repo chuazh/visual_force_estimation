@@ -18,7 +18,12 @@ import numpy as np
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
+import tqdm
 import sys
+import os
+
+from captum.attr import LayerGradCam
+
 try:
     sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 except:
@@ -121,11 +126,75 @@ def visualize_cam(mask, img, alpha=1.0):
 
     return heatmap, result
 
+def process_sequence(gradcam_object,loader,model_type,device,output_filedir):
+    
+    try:
+        command = 'mkdir ' + output_filedir
+        os.system(command)
+    except:
+        print('file directory exists!')
+    
+    if model_type !="S":
+        with tqdm.tqdm(total=len(loader)) as pbar:
+            for n,(img,state,label) in enumerate(loader,0):
+                img = img.to(device,dtype=torch.float)
+                if model_type == "VS":
+                    state = state.to(device,dtype=torch.float)
+                    mask, _ = gradcam((img,state),class_idx=None,retain_graph=True) 
+                else:
+                    mask, _ = gradcam(img,class_idx=None,retain_graph=True)
+                results_all = [[],[],[]]
+                img = unnorm(img.squeeze())
+                for xyz in range(3):
+                    heatmap, results_all[xyz] = visualize_cam(mask[xyz], img,alpha=0.5)
+                result_xyz = np.concatenate((results_all[0],results_all[1],results_all[2]),axis=2)
+                cv2.imwrite(output_filedir+'/heatmap_'+str(n)+'.jpg', cv2.cvtColor(result_xyz.transpose(1,2,0),cv2.COLOR_RGB2BGR)*255)
+                pbar.update(1)
+            
+    else:
+        print('state model has no image...aborting.')
+
+def process_sequence_captum(captum_gc,loader,model_type,device,output_filedir):
+    
+    try:
+        command = 'mkdir ' + output_filedir
+        os.system(command)
+    except:
+        print('file directory exists!')
+    
+    if model_type !="S":
+        mask = [[],[],[]]
+        with tqdm.tqdm(total=len(loader)) as pbar:
+            for n,(img,state,label) in enumerate(loader,0):
+                img = img.to(device,dtype=torch.float)
+                if model_type == "VS":
+                    state = state.to(device,dtype=torch.float)
+                    for axis in range(3):
+                        mask[axis] = captum_gc.attribute((img,state),target=axis,relu_attributions=True) 
+                else:
+                    for axis in range(3):
+                        mask[axis] = captum_gc.attribute(img,target=axis,relu_attributions=True)
+                results_all = [[],[],[]]
+                img = unnorm(img.squeeze())
+                for xyz in range(3):
+                    upsampled_attr = captum_gc.interpolate(mask[xyz], (224, 224),'bicubic')
+                    saliency_map_min, saliency_map_max = upsampled_attr.min(), upsampled_attr.max()
+                    upsampled_attr = (upsampled_attr - saliency_map_min).div(saliency_map_max - saliency_map_min).data
+                    heatmap, results_all[xyz] = visualize_cam(upsampled_attr, img,alpha=0.5)
+                result_xyz = np.concatenate((results_all[0],results_all[1],results_all[2]),axis=2)
+                cv2.imwrite(output_filedir+'/heatmap_'+str(n)+'.jpg', cv2.cvtColor(result_xyz.transpose(1,2,0),cv2.COLOR_RGB2BGR)*255)
+                pbar.update(1)
+            
+    else:
+        print('state model has no image...aborting.')
+
+            
+unnorm = transforms.Normalize([-0.485/0.229, -0.456/0.224, -0.406/0.225], [1/0.229, 1/0.224, 1/0.225])
 
 if __name__ == "__main__":
 
     model_type = "VS"
-    feat_extract = True
+    feat_extract = False
     force_align = False
     
     crop_list = []
@@ -182,25 +251,65 @@ if __name__ == "__main__":
     loader_dict,loader_sizes = dat.init_dataset(train_list,test_list,test_list,model_type,config_dict)
     test_loader = loader_dict['test']
     
-    unnorm = transforms.Normalize([-0.485/0.229, -0.456/0.224, -0.406/0.225], [1/0.229, 1/0.224, 1/0.225])
     
     finalconv_name = 'layer4'
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    for p in model.parameters():
-        p.requires_grad=True
+    #for p in model.parameters():
+        #p.requires_grad=True
         
-    model = model.to(device,dtype=torch.double)
+    model = model.to(device,dtype=torch.float)
     model.eval()
     target_layer = model.cnn._modules.get(finalconv_name)
     gradcam = GradCAM(model, target_layer)
-    #%%
-    inputs,inputs_aug,_ = next(iter(loader_dict['test']))
+    #%% single iteration only
+    inputs,inputs_aug,_ = next(iter(loader_dict['train']))
    
-    mask, _ = gradcam((inputs.to(device,dtype=torch.double),inputs_aug.to(device,dtype=torch.double)),class_idx=None,retain_graph=True)  
+    mask, _ = gradcam((inputs.to(device,dtype=torch.float),inputs_aug.to(device,dtype=torch.float)),class_idx=None,retain_graph=True)  
     results_all = [[],[],[]]
     heatmap = [[],[],[]]
+    img = unnorm(inputs.squeeze())
     for xyz in range(3):
-        img = unnorm(inputs.squeeze())
         heatmap[xyz], results_all[xyz] = visualize_cam(mask[xyz], img,alpha=0.5)
         
     plt.imshow(results_all[0].cpu().detach().numpy().transpose(1,2,0))
+
+    #%% multi_iteration
+    
+    experiment_num = 2
+    test_list = [experiment_num]
+    train_list = [1]
+    
+    loader_dict,loader_sizes = dat.init_dataset(train_list,test_list,test_list,model_type,config_dict)
+    test_loader = loader_dict['test']
+    
+    output_file = file_dir + '/heatmaps/imageset_' + str(experiment_num)
+    process_sequence(gradcam,test_loader,model_type,device,output_file)
+    
+    #%% captum grad cam
+    
+    experiment_num = 32
+    test_list = [experiment_num]
+    train_list = [1]
+    
+    loader_dict,loader_sizes = dat.init_dataset(train_list,test_list,test_list,model_type,config_dict)
+    test_loader = loader_dict['test']
+    captum_gc = LayerGradCam(model,target_layer)
+    output_file = file_dir + '/heatmaps/imageset_captum_' + str(experiment_num)
+    process_sequence_captum(captum_gc,test_loader,model_type,device,output_file)
+    
+
+    #%%
+    finalconv_name = 'layer4'
+    target_layer = model.cnn._modules.get(finalconv_name)
+    inputs,inputs_aug,_ = next(iter(loader_dict['train']))
+    captum_gc = LayerGradCam(model,target_layer)
+    attributions = captum_gc.attribute((inputs.to(device,dtype=torch.float),inputs_aug.to(device,dtype=torch.float)),
+                                       target=0,
+                                       relu_attributions=True)
+    upsampled_attr = captum_gc.interpolate(attributions, (224, 224),'bicubic')
+    saliency_map_min, saliency_map_max = upsampled_attr.min(), upsampled_attr.max()
+    upsampled_attr2 = (upsampled_attr - saliency_map_min).div(saliency_map_max - saliency_map_min).data
+    upsampled_attr = (upsampled_attr - saliency_map_min).div(saliency_map_max - np.spacing(1)).data
+    img = unnorm(inputs.squeeze())
+    heatmap_x, results_all_x = visualize_cam(upsampled_attr, img,alpha=0.5)    
+    plt.imshow(results_all_x.cpu().detach().numpy().transpose(1,2,0))
