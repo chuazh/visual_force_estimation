@@ -34,10 +34,13 @@ class StateVisionModel(nn.Module):
   model_out: the number of output dimensions
   '''
   
-  def __init__(self,cnn_out,augmented_in,model_out,feature_extract=False,layer_depth=4):
+  def __init__(self,cnn_out,augmented_in,model_out,resnet_type= 50,feature_extract=False,layer_depth=4):
     super(StateVisionModel,self).__init__()
-    self.cnn = models.resnet50(pretrained=True)
-
+    if resnet_type != 50:
+        self.cnn = models.resnet152(pretrained=True,progress=False)
+    else:
+        self.cnn = models.resnet50(pretrained=True)
+        
     layer_num = 0
     for param in self.cnn.parameters(): # this sets up fine tuning of the residual layers
       if feature_extract:
@@ -92,7 +95,7 @@ class StateVisionModel_deep(nn.Module):
     
     self.cnn.fc = nn.Linear(self.cnn.fc.in_features,cnn_out) # the fully connected layer will compress the output into 30 params
     # create a few more layers to take use through the data
-    self.state = StateModel(cnn_out+augmented_in,model_out)
+    self.sm = StateModel(cnn_out+augmented_in,model_out)
 
     
   def forward(self,image,data):
@@ -100,7 +103,7 @@ class StateVisionModel_deep(nn.Module):
     x2 = data
 
     x = torch.cat((x1,x2),dim=1)
-    x = self.state(x)
+    x = self.sm(x)
 
     return x
 
@@ -352,7 +355,7 @@ def evaluate_model(model,dataloader,model_type="S",no_pbar=False):
             
             if model_type == "V":
                 outputs = model(inputs)
-            elif model_type == "VS":
+            elif model_type == "VS" or model_type=="VS_deep":
                 outputs= model(inputs,aug_inputs)
             else:
                 outputs = model(aug_inputs)

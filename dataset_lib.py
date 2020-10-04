@@ -38,7 +38,7 @@ class ImgDataset(data.Dataset):
     
     
     '''
-    def __init__(self, label_dir, image_dir, data_sets = None, transform=None, crop_list = [], eval_params = None , include_torque = False, custom_state = None):
+    def __init__(self, label_dir, image_dir, data_sets = None, transform=None, crop_list = [], eval_params = None , include_torque = False, custom_state = None, crop_jitter = False,color_jitter=False,rand_erase=False):
         '''
         Initialization
            exclude_index is a list denoting which datasets to exclude indexed
@@ -48,6 +48,9 @@ class ImgDataset(data.Dataset):
         self.image_dir = image_dir
         self.transform = transform
         self.crop_list = crop_list
+        self.crop_jitter = crop_jitter
+        self.color_jitter = color_jitter
+        self.rand_erase = rand_erase
         self.include_torque = include_torque
         self.custom_state = custom_state
         self.image_folder_prefix = '/imageset*'
@@ -64,6 +67,9 @@ class ImgDataset(data.Dataset):
             mean,std = eval_params
             self.mean,self.stdev = self.normalize_state(mean=mean,stdev=std)
         
+        self.func_colorjit = transforms.ColorJitter(brightness = (0.5,1.5), contrast =(0.5,1.5))
+        self.func_randerase = transforms.RandomErasing(p=0.25,scale=(0.01,0.05),ratio=(0.3,3.3))
+        
     def __len__(self):
         'Denotes the total number of samples'
         return len(self.label_array)
@@ -72,6 +78,13 @@ class ImgDataset(data.Dataset):
         'Generates one sample of data'
         x = im.open(self.image_list[index])
         
+        if self.color_jitter:
+            x = self.func_colorjit(x)
+            
+        jitter = [0,0]
+        if self.crop_jitter:
+            for i in range(2):
+                jitter[i] = np.random.randint(-10,10)
         
         dataset_idx = self.dataset_list[index]-1
         if len(self.crop_list)> 0 :
@@ -93,6 +106,9 @@ class ImgDataset(data.Dataset):
         
         if self.transform:
             x = self.transform(x)
+
+        if self.rand_erase:
+            x = self.func_randerase(x)
 
         if self.custom_state is None:
             x2 = self.label_array[index][7:61]
@@ -267,7 +283,7 @@ def realign_forces(dataset,pose_idx,psm_force_idx):
     return dataset
     
     
-def init_dataset(train_list,val_list,test_list,model_type,config_dict):
+def init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=False):
     
     file_dir = config_dict['file_dir']
     include_torque = config_dict['include_torque']
@@ -302,7 +318,10 @@ def init_dataset(train_list,val_list,test_list,model_type,config_dict):
                                transform = trans_function,
                                crop_list=crop_list,
                                include_torque= include_torque,
-                               custom_state= custom_state)
+                               custom_state= custom_state,
+                               color_jitter=augment,
+                               crop_jitter=augment,
+                               rand_erase=augment)
         val_set = ImgDataset(file_dir,file_dir,
                               data_sets=val_list,
                               transform = trans_function,

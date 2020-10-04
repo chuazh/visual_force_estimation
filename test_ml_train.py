@@ -17,14 +17,19 @@ import torch.nn as nn
 import torch.optim as opt
 import numpy as np
 
-def generate_grid(dataset,num_imgs=64):
+def generate_grid(dataset,num_imgs=64,orig=True):
     
     dataloader = data.DataLoader(dataset,batch_size=num_imgs,shuffle=True)
 
     # Get a batch of training data
     inputs, aug_inputs ,labels = next(iter(dataloader))
     
+    if orig:
+        for i in range(inputs.shape[0]):
+            inputs[i,:,:,:] = unnorm(inputs[i,:,:,:])
+    
     # Make a grid from batch
+    
     out = torchvision.utils.make_grid(inputs)
     imshow(out)
     
@@ -41,12 +46,13 @@ def imshow(inp, title=None):
         plt.title(title)
     plt.pause(0.001)  # pause a bit so that plots are updated
 
+unnorm = transforms.Normalize([-0.485/0.229, -0.456/0.224, -0.406/0.225], [1/0.229, 1/0.224, 1/0.225])
 
 if __name__ == "__main__":
     
     file_dir = '../experiment_data' # define the file directory for dataset
     
-    model_type = "S"
+    model_type = "V"
     feat_extract = False
     force_align = False
     
@@ -72,7 +78,7 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,34):
+    for i in range(1,37):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -82,8 +88,9 @@ if __name__ == "__main__":
     val_list = [2,6,
                 9,13,
                 16,20]
-    test_list = [4,11,18,
-                 22,23,24,25,26,27,28,29,32,33]
+    #test_list = [4,11,18,
+                 #22,23,24,25,26,27,28,29,32,33]
+    test_list = [9,13]
     config_dict={'file_dir':file_dir,
                  'include_torque': False,
                  'spatial_forces': force_align,
@@ -92,7 +99,7 @@ if __name__ == "__main__":
                  'crop_list': crop_list,
                  'trans_function': trans_function}
     
-    dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,val_list,model_type,config_dict)
+    dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=True)
     #%%
     #generate_grid(dataloaders['train'].dataset,64)
 

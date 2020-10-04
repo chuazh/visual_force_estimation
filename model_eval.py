@@ -218,7 +218,8 @@ qty = ['px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
 
 if __name__ == "__main__":
 
-    model_type = "VS_deep"
+    model_type = "S"
+    resnet_type=50
     feat_extract = False
     force_align = False
     
@@ -245,11 +246,13 @@ if __name__ == "__main__":
     
     # load the model
     if model_type == "VS":
-        model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
+        model = mdl.StateVisionModel(30, 54, 3,resnet_type=resnet_type,feature_extract=feat_extract)
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
     elif model_type == "VS_deep":
         model = mdl.StateVisionModel_deep(30, 54, 3)
+    elif model_type =="V":
+        model = mdl.VisionModel(3)
     
     weight_file =  weight_file = "best_modelweights_" + model_type
     
@@ -258,7 +261,9 @@ if __name__ == "__main__":
         
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
-        
+    
+    if resnet_type == 152 and model_type!="S":
+        weight_file = weight_file + "_resnet152"
     weight_file = weight_file + ".dat"
     
     model.load_state_dict(torch.load(weight_file))
@@ -286,7 +291,7 @@ if __name__ == "__main__":
     #plt.close('all')
     predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
     # compute the loss and other performance metrics
-    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],'new_material',"VS")
+    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],'new_material',"V")
     
     plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
     plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
@@ -334,18 +339,18 @@ if __name__ == "__main__":
     
     df_S = pickle.load(open('df_S_test.df','rb'))
     #df_S = df_metrics
-    df_deep = pickle.load(open('df_VS_test.df','rb'))
+    df_V = pickle.load(open('df_V_test.df','rb'))
     df_VS = pickle.load(open('df_VS_test.df','rb'))
-    dyn_model_data = pickle.load(open('../dvrk_dynamic_model/dvrk_dynamics_identification/dynamic_model_preds.dat','rb'), encoding='latin1')
+    dyn_model_data = pickle.load(open('../dvrk_dynamic_model/dvrk_dynamics_identification/dynamic_model_preds_test.dat','rb'), encoding='latin1')
     df_dyn = pd.DataFrame(dyn_model_data['metric_data'])
     
     
-    df_merge = pd.concat([df_S,df_dyn,df_VS])
+    df_merge = pd.concat([df_S,df_V,df_VS,df_dyn])
     #df_merge = pd.concat([df_S,df_VS])
     df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
     sns.catplot(data=df_merge,x='model',y='value',col='condition',kind='bar')
-    #sns.catplot(x='model',y='value',col='condition',col_wrap=3,hue='metric',col_order=['right_less','right','right_more','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='center') & (df_merge['condition']!='new_tool')],kind='bar')
-    #sns.catplot(x='model',y='value',col='condition',hue='metric',col_wrap=3,data=df_merge.loc[(df_merge['condition']=='center') | (df_merge['condition']=='new_tool')|(df_merge['condition']=='new_material')],kind='bar')
+    sns.catplot(x='model',y='value',col='condition',col_wrap=3,col_order=['right_less','right','right_more','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='center') & (df_merge['condition']!='new_tool')],kind='bar')
+    sns.catplot(x='model',y='value',hue="metric",col='condition',col_wrap=3,data=df_merge.loc[(df_merge['condition']=='center') | (df_merge['condition']=='new_tool')|(df_merge['condition']=='new_material')],kind='bar')
     df_merge.groupby(['metric','condition','model']).agg({'value':'mean'})
 
     #%%
