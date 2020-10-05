@@ -78,7 +78,7 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,37):
+    for i in range(1,39):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         

@@ -218,7 +218,7 @@ qty = ['px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
 
 if __name__ == "__main__":
 
-    model_type = "S"
+    model_type = "VS"
     resnet_type=50
     feat_extract = False
     force_align = False
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,37):
+    for i in range(1,40):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -264,7 +264,7 @@ if __name__ == "__main__":
     
     if resnet_type == 152 and model_type!="S":
         weight_file = weight_file + "_resnet152"
-    weight_file = weight_file + ".dat"
+    weight_file = weight_file + "_aug_cpu.dat"
     
     model.load_state_dict(torch.load(weight_file))
     
@@ -307,16 +307,18 @@ if __name__ == "__main__":
     #test_list_full = [2,6,9,13,16,20]
     #condition_list = ['center','center','right','right','left','left']
     
-    test_list_full =  [4,11,18,22,23,24,25,26,27,28,29,32,33,34,36]
+    test_list_full =  [4,11,18,22,23,24,25,26,27,28,29,32,33,34,36,37,38,39]
     condition_list = ['center','right','left',
                       'right_less','right_less',
                       'right_more','right_more',
                       'left_less','left_less',
                       'left_more','left_more',
                       'new_tool','new_tool',
-                      'new_material','new_material']
+                      'new_material','new_material',
+                      'center','right','left']
     
     for test,condition in zip(test_list_full,condition_list):
+        print(condition)
         test_list = [test]
         loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
         test_loader = loader_dict['test']
@@ -332,25 +334,34 @@ if __name__ == "__main__":
     df_metrics = pd.DataFrame(metrics_list)
     
     import pickle
-    df_filedir = 'df_'+model_type+'_test.df'
+    df_filedir = 'df_'+model_type+'_test_aug.df'
     pickle.dump(df_metrics,open(df_filedir,'wb'))
-
+    
+    preds_filedir = "preds_"+model_type+'_test_aug.preds'
+    pickle.dump(predictions_list,open(preds_filedir,'wb'))
+    
+                
     #%% Visualization
     
     df_S = pickle.load(open('df_S_test.df','rb'))
     #df_S = df_metrics
     df_V = pickle.load(open('df_V_test.df','rb'))
     df_VS = pickle.load(open('df_VS_test.df','rb'))
+    df_VS_aug = pickle.load(open('df_VS_test_aug.df','rb'))
     dyn_model_data = pickle.load(open('../dvrk_dynamic_model/dvrk_dynamics_identification/dynamic_model_preds_test.dat','rb'), encoding='latin1')
     df_dyn = pd.DataFrame(dyn_model_data['metric_data'])
     
     
-    df_merge = pd.concat([df_S,df_V,df_VS,df_dyn])
+    df_merge = pd.concat([df_S,df_V,df_VS_aug,df_dyn])
     #df_merge = pd.concat([df_S,df_VS])
     df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
     sns.catplot(data=df_merge,x='model',y='value',col='condition',kind='bar')
-    sns.catplot(x='model',y='value',col='condition',col_wrap=3,col_order=['right_less','right','right_more','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='center') & (df_merge['condition']!='new_tool')],kind='bar')
+    #barplot - right to left
+    sns.catplot(x='model',y='value',hue="metric",col='condition',col_wrap=3,col_order=['right_less','right','right_more','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='center') & (df_merge['condition']!='new_tool')],kind='bar')
+    #barplot - center and new tools/ material
     sns.catplot(x='model',y='value',hue="metric",col='condition',col_wrap=3,data=df_merge.loc[(df_merge['condition']=='center') | (df_merge['condition']=='new_tool')|(df_merge['condition']=='new_material')],kind='bar')
+    
+    sns.catplot(x='condition',y='value',hue="model",row='metric',order=['right_less','right','right_more','center','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='new_tool')],kind='point',ci=None)
     df_merge.groupby(['metric','condition','model']).agg({'value':'mean'})
 
     #%%

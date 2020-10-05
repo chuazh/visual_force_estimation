@@ -1,4 +1,5 @@
 *.dat
 *.df
 runs
+*.preds
 __pycache__
