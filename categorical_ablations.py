@@ -36,7 +36,7 @@ if __name__ == "__main__":
     file_dir = '../experiment_data' # define the file directory for dataset
     
     model_type = "S"
-    feat_extract = True
+    feat_extract = False
     force_align = False
     
     weight_file =  weight_file = "best_modelweights_" + model_type
@@ -47,8 +47,8 @@ if __name__ == "__main__":
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
     
-    pretrained_file = weight_file +"_L1_500epoch.dat"
-    weight_file = weight_file + "_ablate_L1_P.dat"
+    pretrained_file = weight_file +".dat"
+   
     
     # Define a transformation for the images
     trans_function = transforms.Compose([transforms.Resize((224,224)),
@@ -97,29 +97,37 @@ if __name__ == "__main__":
        'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
        'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
     
-    mask = np.isin(qty,pos_features,invert=False)
-    #mask = np.isin(qty,force_features,invert=False)
-    
-    for loader in dataloaders.values():
-        loader.dataset.mask_labels(mask)
-    
-    if model_type == "VS":
-        model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
-    elif model_type == "S":
-        model  = mdl.StateModel(54, 3)
-    
-    pretrained_weights = torch.load(pretrained_file)
-    #model.load_state_dict(pretrained_weights)
-    # create loss function
-    criterion = nn.MSELoss(reduction='sum')
-    # define optimization method
-    optimizer = opt.Adam(model.parameters(),lr=0.001,weight_decay=0)
-    model,train_history,val_history,_ = mdl.train_model(model,
-                                                         criterion, optimizer,
-                                                         dataloaders, dataset_sizes,  
-                                                         num_epochs=100,
-                                                         L1_loss=0.001,
-                                                         model_type= model_type,
-                                                         weight_file=weight_file,
-                                                         suppress_log=False)
+    for ab_cond in ['F','P']:
+        if ab_cond == 'F':
+            mask_feature = force_features
+            ab_weight_file = weight_file + "_F.dat"
+        else:
+            mask_feature = pos_features
+            ab_weight_file = weight_file + "_P.dat"
+            
+        mask = np.isin(qty,mask_feature,invert=False)
+        #mask = np.isin(qty,force_features,invert=False)
+        
+        for loader in dataloaders.values():
+            loader.dataset.mask_labels(mask)
+        
+        if model_type == "VS":
+            model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
+        elif model_type == "S":
+            model  = mdl.StateModel(54, 3)
+        
+        pretrained_weights = torch.load(pretrained_file)
+        #model.load_state_dict(pretrained_weights)
+        # create loss function
+        criterion = nn.MSELoss(reduction='sum')
+        # define optimization method
+        optimizer = opt.Adam(model.parameters(),lr=0.001,weight_decay=0)
+        model,train_history,val_history,_ = mdl.train_model(model,
+                                                             criterion, optimizer,
+                                                             dataloaders, dataset_sizes,  
+                                                             num_epochs=100,
+                                                             L1_loss=0.001,
+                                                             model_type= model_type,
+                                                             weight_file=ab_weight_file,
+                                                             suppress_log=False)
     
