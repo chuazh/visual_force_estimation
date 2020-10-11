@@ -18,6 +18,119 @@ import glob
 import natsort
 from scipy.spatial.transform import Rotation as R
 
+class RNN_ImgDataset(data.Dataset):
+    
+    def __init__(self,filedir,lookback,trans_function,crop_list=[],skips=0,data_sets=None):
+        
+        self.lookback = lookback
+        self.skips = skips
+        self.image_folder_prefix = '/imageset'
+        self.file_dir = filedir
+        self.image_dir = filedir
+        self.label_array,self.lookup = self.read_labels(filedir,data_sets)
+        self.image_list,self.dataset_list = self.generate_image_list(self.image_dir,data_sets)
+    
+        self.grayscale_convert = transforms.Compose([transforms.ToPILImage(),transforms.Grayscale()])
+        self.trans_function = trans_function
+        
+        self.crop_list = crop_list
+    
+    def __len__(self):
+        return(len(self.lookup))
+    
+    def __getitem__(self,index):
+        
+        idx = int(self.lookup[index])
+        
+        if self.skips+1>self.lookback:
+            print("Warning: Skip step is larger than look back range.")
+
+        # grab the dataset in which this sequence belongs to
+        image_mean_idx = self.dataset_list[index]
+        # get the image mean
+        img_mean = transforms.ToTensor()(im.open(self.file_dir+self.image_folder_prefix+"_"+str(image_mean_idx)+"/image_mean.jpg"))
+        
+        # the back range give a list of indexes we should load
+        back_range = np.flip(np.arange(idx,idx-self.lookback-1,step=-1-self.skips).astype(int)) 
+        img_list = []
+        for img_idx in back_range: 
+            x = transforms.ToTensor()(im.open(self.image_list[img_idx]))-img_mean + 127 # load images and subtract the mean
+            
+            x = self.grayscale_convert(x) # convert to gray scale
+            if len(self.crop_list)> 0 : # perform the image crop
+                '''use the crop list'''
+                t = self.crop_list[image_mean_idx][0]
+                l = self.crop_list[image_mean_idx][1]
+                h = self.crop_list[image_mean_idx][2]
+                w = self.crop_list[image_mean_idx][3]
+                x = transforms.functional.crop(x,top=t,left=l,height=h,width=w)
+            else:
+                '''Use the default crop'''
+                #x = transforms.functional.crop(x,top=57,left=320,height=462,width=462)
+                x = transforms.functional.crop(x,top=100,left=320,height=250,width=250) #new dataset
+            
+            x = transforms.Resize((224,224))(x)
+            x = transforms.ToTensor()(x).squeeze()
+            img_list.append(x)
+        
+        x = torch.stack(img_list,axis=0)
+        
+        x = self.trans_function(x) # convert to tensor and normalize by image net
+    
+        y = self.label_array[idx][1:4]
+        x2 = 0
+        
+        return x,x2,y
+        
+    def read_labels(self,label_dir,data_sets):
+        
+        file_list = natsort.humansorted(glob.glob(label_dir + "/labels_*.txt"))
+        label_list = []
+        start_index = 0
+        lookup = np.empty((0,))
+        
+        if data_sets is not None:
+            for i in data_sets:
+                data = np.loadtxt(file_list[i-1],delimiter=",")
+                true_index = np.arange(start_index+self.lookback, start_index+data.shape[0])
+                label_list.append(data)
+                start_index += data.shape[0]
+                lookup = np.hstack((lookup,true_index))
+        else:
+            for i in range(len(file_list)):
+                data=np.loadtxt(file_list[i],delimiter=",")
+                true_index = np.arange(start_index+self.lookback,start_index+data.shape[0])
+                label_list.append(data)
+                start_index += data.shape[0]
+                lookup = np.hstack((lookup,true_index))
+        
+        labels=np.concatenate(label_list,axis=0)
+        
+        return labels,lookup
+    
+    def generate_image_list(self,image_dir,data_sets):
+        '''Generates the file list of images, accounting for exluded sets'''
+        
+        # get the list of folders for the images
+        image_folder_list = natsort.humansorted(glob.glob(image_dir+self.image_folder_prefix+"*"))
+        file_list = []
+        dataset_list = []
+        
+        if data_sets is not None:
+            for i in data_sets:
+                new_files = natsort.humansorted(glob.glob(image_folder_list[i-1]+"/*.jpg"))
+                file_list = file_list + new_files
+                dataset_list = dataset_list + [i for n in range(len(new_files))]
+        else:
+            for i in range(len(image_folder_list)):
+                new_files = natsort.humansorted(glob.glob(image_folder_list[i]+"/*.jpg"))
+                file_list = file_list + natsort.humansorted(glob.glob(image_folder_list[i]+"/*.jpg")) 
+                dataset_list = dataset_list + [i+1 for n in range(len(new_files))]
+        
+        return file_list,dataset_list    
+
+
+
 class ImgDataset(data.Dataset):
     
     '''
@@ -309,6 +422,28 @@ def init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=Fa
                                 include_torque = include_torque,
                                 custom_state= custom_state,
                                 spatial_force=spatial_force)
+    elif model_type == "V_RNN":
+        crop_list = config_dict['crop_list']
+        trans_function = config_dict['trans_function']
+        lookback = 20
+        train_set = RNN_ImgDataset(file_dir,
+                                   lookback,
+                                   trans_function,
+                                   crop_list=[],
+                                   skips=9,
+                                   data_sets=train_list)
+        val_set = RNN_ImgDataset(file_dir,
+                                   lookback,
+                                   trans_function,
+                                   crop_list=[],
+                                   skips=9,
+                                   data_sets=val_list)
+        test_set = RNN_ImgDataset(file_dir,
+                                   lookback,
+                                   trans_function,
+                                   crop_list=[],
+                                   skips=9,
+                                   data_sets=test_list)
     else:
         crop_list = config_dict['crop_list']
         trans_function = config_dict['trans_function']

@@ -52,7 +52,7 @@ if __name__ == "__main__":
     
     file_dir = '../experiment_data' # define the file directory for dataset
     
-    model_type = "V"
+    model_type = "V_RNN"
     feat_extract = False
     force_align = False
     
@@ -66,11 +66,14 @@ if __name__ == "__main__":
         
     weight_file = weight_file + ".dat"
     
-    # Define a transformation for the images
-    trans_function = transforms.Compose([transforms.Resize((224,224)),
-                                         transforms.ToTensor(),
-                                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
-    
+
+    if model_type == "V_RNN":
+        trans_function = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    else:
+        # Define a transformation for the images
+        trans_function = transforms.Compose([transforms.Resize((224,224)),
+                                             transforms.ToTensor(),
+                                             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
     
     # We have to define the crop area of interest for the images
     # I hope to create cross-hairs in the gui so I can "aim" better during data collection.
@@ -78,7 +81,7 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,39):
+    for i in range(1,40):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -108,7 +111,7 @@ if __name__ == "__main__":
         model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
-    elif model_type == "V":
+    elif (model_type == "V") or (model_type == "V_RNN"):
         model = mdl.VisionModel(3)
     
     # create loss function

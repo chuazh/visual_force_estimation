@@ -209,7 +209,7 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                 if model_type !="S":
                     inputs = inputs.to(device,dtype=torch.float)
                 
-                if model_type != "V":
+                if (model_type != "V") or (model_type!="V_RNN"):
                     aug_inputs = aug_inputs.to(device,dtype=torch.float)
                     
                 labels = labels.to(device,dtype=torch.float)
@@ -219,7 +219,7 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                 if phase == 'train':
                   torch.set_grad_enabled(True)
                   
-                  if model_type == "V":
+                  if (model_type == "V") or (model_type=="V_RNN"):
                       outputs = model(inputs)
                   elif model_type == "VS":
                       outputs= model(inputs,aug_inputs)
