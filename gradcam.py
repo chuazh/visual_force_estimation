@@ -181,8 +181,9 @@ def process_sequence_captum(captum_gc,loader,model_type,device,output_filedir):
                     saliency_map_min, saliency_map_max = upsampled_attr.min(), upsampled_attr.max()
                     upsampled_attr = (upsampled_attr - saliency_map_min).div(saliency_map_max - saliency_map_min).data
                     heatmap, results_all[xyz] = visualize_cam(upsampled_attr, img,alpha=0.5)
-                result_xyz = np.concatenate((results_all[0],results_all[1],results_all[2]),axis=2)
-                cv2.imwrite(output_filedir+'/heatmap_'+str(n)+'.jpg', cv2.cvtColor(result_xyz.transpose(1,2,0),cv2.COLOR_RGB2BGR)*255)
+                border = np.ones((3,224,5),dtype=np.float32)
+                result_xyz = np.concatenate((results_all[0].numpy(),border,results_all[1].numpy(),border,results_all[2].numpy()),axis=2)
+                cv2.imwrite(output_filedir+'/heatmap_'+str(n)+'.jpg', (cv2.cvtColor(result_xyz.transpose(1,2,0),cv2.COLOR_RGB2BGR)*255))
                 pbar.update(1)
             
     else:
@@ -209,7 +210,7 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,34):
+    for i in range(1,41):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -223,6 +224,8 @@ if __name__ == "__main__":
         model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
+    elif model_type == "V":
+        model = mdl.VisionModel(3)
     
     weight_file =  weight_file = "best_modelweights_" + model_type
     
@@ -259,7 +262,10 @@ if __name__ == "__main__":
         
     model = model.to(device,dtype=torch.float)
     model.eval()
-    target_layer = model.cnn._modules.get(finalconv_name)
+    if model_type=="VS":
+        target_layer = model.cnn._modules.get(finalconv_name)
+    elif model_type =="V":
+        target_layer = model._modules.get(finalconv_name)
     gradcam = GradCAM(model, target_layer)
     #%% single iteration only
     inputs,inputs_aug,_ = next(iter(loader_dict['train']))
@@ -275,27 +281,35 @@ if __name__ == "__main__":
 
     #%% multi_iteration
     
-    experiment_num = 2
+    experiment_num = 4
     test_list = [experiment_num]
-    train_list = [1]
+    train_list = [1,3,5,7,
+              8,10,12,14,
+              15,17,19,21]
     
     loader_dict,loader_sizes = dat.init_dataset(train_list,test_list,test_list,model_type,config_dict)
     test_loader = loader_dict['test']
     
-    output_file = file_dir + '/heatmaps/imageset_' + str(experiment_num)
+    output_file = file_dir + '/heatmaps/aug_imageset_' + str(experiment_num)
     process_sequence(gradcam,test_loader,model_type,device,output_file)
     
     #%% captum grad cam
     
-    experiment_num = 32
-    test_list = [experiment_num]
-    train_list = [1]
+    experiment_num = 4
+    #test_list_full = [4,11,18,22,23,24,25,26,27,28,29,32,33,34,36,37,38,39]
+    test_list_full=[32,34]
+    train_list = [1,3,5,7,
+          8,10,12,14,
+          15,17,19,21]
     
-    loader_dict,loader_sizes = dat.init_dataset(train_list,test_list,test_list,model_type,config_dict)
-    test_loader = loader_dict['test']
-    captum_gc = LayerGradCam(model,target_layer)
-    output_file = file_dir + '/heatmaps/imageset_captum_' + str(experiment_num)
-    process_sequence_captum(captum_gc,test_loader,model_type,device,output_file)
+    
+    for test in test_list_full:
+        test_list = [test]
+        loader_dict,loader_sizes = dat.init_dataset(train_list,train_list,test_list,model_type,config_dict)
+        test_loader = loader_dict['test']
+        captum_gc = LayerGradCam(model,target_layer)
+        output_file = file_dir + '/heatmaps/imageset_captum_new_' + model_type + "_" + str(test)
+        process_sequence_captum(captum_gc,test_loader,model_type,device,output_file)
     
 
     #%%

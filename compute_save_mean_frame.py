@@ -67,3 +67,53 @@ for sequence in range(39):
 normalized_frame = (x.astype(np.uint8)-mean_frame.astype(np.uint8)).astype(np.uint8)+127
 #plt.imshow(mean_frame.astype(np.uint8))
 #plt.imshow()
+
+#%% Save images
+
+import dataset_lib as dat
+import torchvision.transforms as transform
+import os
+# initialize the datasets
+
+crop_list = []
+for i in range(0,39):
+    #crop_list.append((50,350,300,300))
+    crop_list.append((270-150,480-150,300,300))
+model_type = "V_RNN"
+trans_function = transform.Lambda(lambda x: x)
+file_dir = "../experiment_data"
+config_dict={'file_dir':file_dir,
+                 'include_torque': False,
+                 'spatial_forces': False,
+                 'custom_state': None,
+                 'batch_size': 1,
+                 'crop_list': crop_list,
+                 'trans_function': trans_function}
+train_list = [1]
+val_list = [1]
+
+try:
+    os.system("mkdir "+file_dir+"/space_time")
+except:
+    print("directory exists")
+
+for dataset_num in range(0,1):
+    test_list = [dataset_num+1]
+    dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=False)
+
+    test_loader = dataloaders['test']
+    dataset_dir =  file_dir + "/space_time/imageset_" + str(dataset_num+1)
+    mkdir_command = "mkdir " + dataset_dir
+    
+    try:
+        os.system(mkdir_command)
+        print("making " + mkdir_command)
+    except:
+        print("directory exists")
+        
+    with tqdm.tqdm(total=len(test_loader)) as pbar:
+        for img_num,(x,z,y) in enumerate(test_loader,1):
+            x = (x.squeeze().cpu().numpy().transpose(1,2,0) *255).astype(np.uint8)
+            imagesave = dataset_dir + "/img_" +str(img_num)+".jpg"
+            cv2.imwrite(imagesave,x)
+            pbar.update(1)

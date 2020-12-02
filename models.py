@@ -244,7 +244,7 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                 else :
                   torch.set_grad_enabled(False)
                   
-                  if model_type == "V":
+                  if (model_type == "V") or (model_type=="V_RNN"):
                       outputs = model(inputs)
                   elif model_type == "VS":
                       outputs= model(inputs,aug_inputs)
@@ -328,7 +328,7 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
     return model, train_losses, val_losses, best_loss     
 
 
-def evaluate_model(model,dataloader,model_type="S",no_pbar=False):
+def evaluate_model(model,dataloader,model_type="S",no_pbar=False,encode=False):
     
     tqdm.write('Performing Inference...')
     
@@ -340,7 +340,10 @@ def evaluate_model(model,dataloader,model_type="S",no_pbar=False):
     model.eval()
     
     if dataloader.dataset.include_torque == False:
-        predictions = np.empty((0,3))
+        if encode:
+            predictions = np.empty((0,2048)) # use this for encoding.
+        else:
+            predictions = np.empty((0,3))
     else:
         predictions = np.empty((0,6))
     
@@ -349,11 +352,11 @@ def evaluate_model(model,dataloader,model_type="S",no_pbar=False):
             
             if model_type !="S":
                 inputs = inputs.to(device,dtype=torch.float)
-            if model_type != "V":
+            if (model_type != "V") or (model_type!="V_RNN"):
                 aug_inputs = aug_inputs.to(device,dtype=torch.float)
             labels = labels.to(device,dtype=torch.float)
             
-            if model_type == "V":
+            if (model_type == "V") or (model_type == "V_RNN"):
                 outputs = model(inputs)
             elif model_type == "VS" or model_type=="VS_deep":
                 outputs= model(inputs,aug_inputs)

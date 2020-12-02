@@ -50,9 +50,9 @@ unnorm = transforms.Normalize([-0.485/0.229, -0.456/0.224, -0.406/0.225], [1/0.2
 
 if __name__ == "__main__":
     
-    file_dir = '../experiment_data' # define the file directory for dataset
+    file_dir = '../PSM1_data' # define the file directory for dataset
     
-    model_type = "V_RNN"
+    model_type = "S"
     feat_extract = False
     force_align = False
     
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
         
-    weight_file = weight_file + ".dat"
+    weight_file = weight_file + "PSM1.dat"
     
 
     if model_type == "V_RNN":
@@ -84,16 +84,18 @@ if __name__ == "__main__":
     for i in range(1,40):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
-        
+    '''    
     train_list = [1,3,5,7,
                   8,10,12,14,
                   15,17,19,21]
     val_list = [2,6,
                 9,13,
-                16,20]
+                16,20]'''
+    train_list = [1,3,5,7]
+    val_list = [2,6]
     #test_list = [4,11,18,
                  #22,23,24,25,26,27,28,29,32,33]
-    test_list = [9,13]
+    test_list = [4,8]
     config_dict={'file_dir':file_dir,
                  'include_torque': False,
                  'spatial_forces': force_align,
@@ -102,9 +104,9 @@ if __name__ == "__main__":
                  'crop_list': crop_list,
                  'trans_function': trans_function}
     
-    dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=True)
+    dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=False)
     #%%
-    #generate_grid(dataloaders['train'].dataset,64)
+    #generate_grid(dataloaders['test'].dataset,64)
 
     # define model
     if model_type == "VS":

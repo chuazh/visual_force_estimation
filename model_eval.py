@@ -233,15 +233,39 @@ qty = ['px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
        'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
        'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz']
 
+qty_full = ['t','fx','fy','fz','tx','ty','tz',
+       'px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
+       'q1','q2','q3','q4','q5','q6','q7',
+       'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
+       'tq1','tq2','tq3','tq4','tq5','tq6','tq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d',
+       'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
+       'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6']
+
+force_features = ['tq1','tq2','tq3','tq4','tq5','tq6','tq7',
+   'q1d','q2d','q3d','q4d','q5d','q6d','q7d',
+   'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
+   'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz']
+
+pos_features = ['px','py','pz','qx','qy','qz','qw',
+   'vx','vy','vz','wx','wy','wz',
+   'q1','q2','q3','q4','q5','q6','q7',
+   'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
+   'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
 
 if __name__ == "__main__":
 
-    model_type = "VS"
-    resnet_type=50
+    model_type = "S"
+    ablate = 0#"F"
+    resnet_type= 50
     feat_extract = False
     force_align = False
-    
+    encode = False
     crop_list = []
+    use_predlist = False
     '''
     for i in range(1,14):
         crop_list.append((57,320,462,462))
@@ -253,14 +277,17 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,40):
+    for i in range(1,41):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
     # Define a transformation for the images
-    trans_function = transforms.Compose([transforms.Resize((224,224)),
-                                         transforms.ToTensor(),
-                                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
+    if model_type == "V_RNN":
+        trans_function =  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    else:
+        trans_function = transforms.Compose([transforms.Resize((224,224)),
+                                             transforms.ToTensor(),
+                                             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
     
     # load the model
     if model_type == "VS":
@@ -269,7 +296,7 @@ if __name__ == "__main__":
         model  = mdl.StateModel(54, 3)
     elif model_type == "VS_deep":
         model = mdl.StateVisionModel_deep(30, 54, 3)
-    elif model_type =="V":
+    elif model_type =="V" or model_type=="V_RNN":
         model = mdl.VisionModel(3)
     
     weight_file =  weight_file = "best_modelweights_" + model_type
@@ -281,14 +308,26 @@ if __name__ == "__main__":
         weight_file = weight_file + "_faligned"
     
     if resnet_type == 152 and model_type!="S":
-        weight_file = weight_file + "_resnet152"
-    weight_file = weight_file + ".dat"
+        weight_file = weight_file + "_152"
+        
+    weight_file = weight_file + "_PSM1.dat"
     
     model.load_state_dict(torch.load(weight_file))
     
+    # uncomment this to do a encoding using the pre-trained RESNET
+    if encode and model_type=="V_RNN":
+        model.fc = torch.nn.Tanh()
+    elif encode and model_type == "V":
+        model.fc = torch.nn.Identity()
+        
+    
     # load the dataset
-    file_dir = '../experiment_data' # define the file directory for dataset
-    train_list = [1]
+    
+    file_dir = '../PSM1_data' # define the file directory for dataset
+    '''train_list = [1,3,5,7,
+                  8,10,12,14,
+                  15,17,19,21]'''
+    train_list = [1,3,5,7]
     val_list = [1]
     config_dict={'file_dir':file_dir,
              'include_torque': False,
@@ -302,14 +341,19 @@ if __name__ == "__main__":
     
     #%%   Manual Plotting
     
-    test_list = [25]  
+    test_list = [2,6,9,13,16,20]  
     loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
     test_loader = loader_dict['test']
-
+    if ablate == "F":
+        mask = np.isin(qty_full,force_features,invert=False)
+        test_loader.dataset.mask_labels(mask)
+    if ablate == "P":
+        mask = np.isin(qty_full,pos_features,invert=False)
+        test_loader.dataset.mask_labels(mask)
     #plt.close('all')
     predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
     # compute the loss and other performance metrics
-    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],'new_material',"V")
+    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],max_force,min_force,'new_material',"V")
     
     plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
     plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
@@ -322,10 +366,19 @@ if __name__ == "__main__":
     
     predictions_list = []
     metrics_list = []
+    '''
+    test_list_full = [1,3,5,7,8,10,12,14,15,17,19,21]
+    condition_list = ['center','center','center','center',
+                      'right','right','right','right',
+                      'left','left','left','left']
+    '''
+    '''
     test_list_full = [2,6,9,13,16,20]
     condition_list = ['center','center','right','right','left','left']
     '''
-    test_list_full =  [4,11,18,
+    test_list_full =  [4,8]
+    condition_list = ['center','center']
+    '''test_list_full =  [4,11,18,
                        22,23,
                        24,25,
                        26,27,
@@ -333,8 +386,8 @@ if __name__ == "__main__":
                        32,33,
                        34,36,
                        37,38,39]
-    '''
-    '''
+    
+    
     condition_list = ['center','right','left',
                       'right_less','right_less',
                       'right_more','right_more',
@@ -342,8 +395,9 @@ if __name__ == "__main__":
                       'left_more','left_more',
                       'new_tool','new_tool',
                       'new_material','new_material',
-                      'center','right','left']
-    '''
+                      'center','right','left']'''
+    
+    
     
     # compute the max and min force over the entire test set
     max_force = np.array([0.0,0.0,0.0])
@@ -360,63 +414,135 @@ if __name__ == "__main__":
                 print('min force {:f} found, dataset {}, axis {}, time{}'.format(test_min[i],test,i,np.argmin(forces,axis=0)[i]))
                 min_force[i] = test_min[i]
     
-    use_predlist = False
     if use_predlist:
-        predlist = pickle.load(open('preds_'+model_type+'_test.preds',"rb"))
-        
-    for i,(test,condition) in enumerate(zip(test_list_full,condition_list),0):
-        test_list = [test]
-        loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
-        test_loader = loader_dict['test']
-        
-        if use_predlist:
-            predictions = predlist[i]
-        else:
-            print(condition)
-            #plt.close('all')
-            predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
-            predictions_list.append(predictions)
-        
-    # compute the loss and other performance metrics
-        metrics = compute_loss_metrics(predictions[10:-10,:],test_loader.dataset.label_array[10:-10,1:4],max_force,min_force,condition,model_type)
-        metrics_list.append(metrics)
+        #predlist = pickle.load(open('preds_'+model_type+'_test4.preds',"rb"))
+        predlist = pickle.load(open('preds_'+model_type+'_l1-1e-3.preds',"rb"))
+    if encode:
+        for i,(test) in enumerate(range(1,40),0):
+            test_list = [test]
+            loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+            test_loader = loader_dict['test']
+            
+            if ablate == "F":
+                mask = np.isin(qty_full,force_features,invert=False)
+                test_loader.dataset.mask_labels(mask)
+            if ablate == "P":
+                mask = np.isin(qty_full,pos_features,invert=False)
+                test_loader.dataset.mask_labels(mask)
+            
+            if use_predlist:
+                predictions = predlist[i]
+            else:
+                #plt.close('all')
+                predictions = mdl.evaluate_model(model,test_loader,model_type = model_type,encode=encode)
+                predictions_list.append(predictions)
+            
+            np.savetxt('encodings_V/encode_'+str(i+1)+'.txt',predictions) # uncomment to save encodings.
     
-    # create dataframe
-    df_metrics = pd.DataFrame(metrics_list)
-    
-    import pickle
-    df_filedir = 'df_'+model_type+'_val.df'
-    pickle.dump(df_metrics,open(df_filedir,'wb'))
-    
-    if not use_predlist:
-        preds_filedir = "preds_"+model_type+'_val.preds'
-        pickle.dump(predictions_list,open(preds_filedir,'wb'))
+    else:
+        for i,(test,condition) in enumerate(zip(test_list_full,condition_list),0):
+            test_list = [test]
+            loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+            test_loader = loader_dict['test']
+            
+            if ablate == "F":
+                mask = np.isin(qty_full,force_features,invert=False)
+                test_loader.dataset.mask_labels(mask)
+            if ablate == "P":
+                mask = np.isin(qty_full,pos_features,invert=False)
+                test_loader.dataset.mask_labels(mask)
+            
+            if use_predlist:
+                predictions = predlist[i]
+            else:
+                print(condition)
+                #plt.close('all')
+                predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
+                predictions_list.append(predictions)
+           
+        # compute the loss and other performance metrics
+            if model_type =="V_RNN":
+                #metrics = compute_loss_metrics(predictions[:-10,:],test_loader.dataset.label_array[20:-10,1:4],max_force,min_force,condition,model_type)
+                metrics = compute_loss_metrics(predictions[:,:3],predictions[:,3:],max_force,min_force,condition,model_type)
+            else:
+                metrics = compute_loss_metrics(predictions[10:-10,:],test_loader.dataset.raw_label_array[10:-10,1:4],max_force,min_force,condition,model_type)
+            metrics_list.append(metrics)
+        
+        # create dataframe
+        df_metrics = pd.DataFrame(metrics_list)
+        
+        import pickle
+        df_filedir = 'df_'+model_type+'_test_PSM1.df'
+        pickle.dump(df_metrics,open(df_filedir,'wb'))
+        
+        if not use_predlist:
+            preds_filedir = "preds_"+model_type+'_PSM1.preds'
+            pickle.dump(predictions_list,open(preds_filedir,'wb'))
     
                 
     #%% Visualization
     
-    df_S = pickle.load(open('df_S_test.df','rb'))
-    df_V = pickle.load(open('df_V_test.df','rb'))
-    df_VS = pickle.load(open('df_VS_test.df','rb'))
-    df_VS_aug = pickle.load(open('df_VS_test_aug.df','rb'))
+    df_S = pickle.load(open('df_S_test_use_preds.df','rb'))
+    df_V = pickle.load(open('df_V_test_use_preds.df','rb'))
+    df_V_2 = pickle.load(open('df_V_test_l1-1e-3.df',"rb"))
+    df_VS = pickle.load(open('df_VS_test_use_preds.df','rb'))
+    df_VS_2 = pickle.load(open('df_VS_test_2.df','rb'))
+    df_VS_deep = pickle.load(open('df_VS_deep_test_deep.df','rb'))
+    df_VS_152 = pickle.load(open('df_VS_test_152.df','rb'))
+    df_VS_152_2 = pickle.load(open('df_VS_test_152-2.df','rb'))
     df_VS_aug100 = pickle.load(open('df_VS_test_aug_100.df','rb'))
     dyn_model_data = pickle.load(open('../dvrk_dynamic_model/dvrk_dynamics_identification/dynamic_model_preds_test.dat','rb'), encoding='latin1')
     df_dyn = pd.DataFrame(dyn_model_data['metric_data'])
+    df_VRNN = pickle.load(open('df_V_RNN_test_full4.df','rb'))
+    df_VS_F = pickle.load(open('df_VS_test_ablate_F2.df','rb'))
+    df_VS_P = pickle.load(open('df_VS_test_ablate_P2.df','rb'))
+    df_S_F = pickle.load(open('df_S_test_ablate_F.df','rb'))
+    df_S_P = pickle.load(open("df_S_test_ablate_P.df","rb"))
     
     test_numbering_list = [1,1,1,1,2,1,2,1,2,1,2,1,2,1,2,2,2,2]
     df_S['test_number'] = test_numbering_list
     df_VS['test_number'] = test_numbering_list
     df_V['test_number'] = test_numbering_list
     df_dyn['test_number'] = test_numbering_list
+    df_VRNN['test_number'] = test_numbering_list
     
     df_VS_aug100['test_number'] = test_numbering_list
     df_VS_aug100['model'] = 'VSaug'
     
-    df_merge = pd.concat([df_S,df_V,df_VS,df_VS_aug100,df_dyn])
-    #df_merge = pd.concat([df_S,df_VS])
-    #df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
-    df_merge = pd.melt(df_merge,id_vars=['condition','model','test_number'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
+    df_VS_deep['test_number'] = test_numbering_list
+    df_VS_deep['model'] = 'VSdeep'
     
+    df_VS_152['test_number'] =test_numbering_list
+    df_VS_152['model'] = 'VS152'
+    
+    df_VS_152_2['test_number'] = test_numbering_list
+    df_VS_152_2['model'] = "VS152-2"
+    
+    df_V_2['test_number']=test_numbering_list
+    df_V_2['model']='V-l1'
+    
+    df_VS_2['test_number'] = test_numbering_list
+    df_VS_2['model']='VS_2'
+    
+    df_VS_F['test_number'] = test_numbering_list
+    df_VS_F['model'] = 'VS_pos_only'
+    
+    df_VS_P['test_number'] = test_numbering_list
+    df_VS_P['model'] = 'VS_force_only'
+    
+    df_S_F['test_number'] = test_numbering_list
+    df_S_F['model'] = 'S_pos_only'
+    
+    df_S_P['test_number'] = test_numbering_list
+    df_S_P['model'] = 'S_force_only' 
+    
+    df_merge = pd.concat([df_S,df_VS_2,df_V_2,df_dyn,df_VRNN,df_VS_P,df_VS_F,df_S_P,df_S_F])
+    #df_merge = pd.concat([df_S,df_VS,df_V])
+    #df_merge = pd.concat([df_S,df_VS_152,df_VS_152_2,df_VS])
+    #df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['ME'],var_name = 'metric',value_name='value')
+    #df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis RMSEx','Per Axis RMSEy','Per Axis RMSEz'],var_name = 'metric',value_name='value')
+    df_merge = pd.melt(df_merge,id_vars=['condition','model','test_number'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
+    df_merge.to_csv("summary_nRMSD3.csv")
     sns.catplot(data=df_merge,x='model',y='value',col='condition',kind='bar')
     #barplot - right to left
     sns.catplot(x='model',y='value',hue="metric",col='condition',col_wrap=3,col_order=['right_less','right','right_more','left_less','left','left_more',],data=df_merge.loc[(df_merge['condition']!='center') & (df_merge['condition']!='new_tool')],kind='bar')
@@ -426,7 +552,9 @@ if __name__ == "__main__":
     sns.catplot(x='condition',y='value',hue="model",row='metric',order=['right_more','right','right_less','center','left_less','left','left_more'],data=df_merge,kind='point',ci=None)
     sns.catplot(x='condition',y='value',hue="model",row='metric',order=['new_tool','center','new_material'],data=df_merge,kind='point',ci=None,linestyles='-')
     df_merge.groupby(['metric','condition','model']).agg({'value':'mean'})
-
+    
+    sns.catplot(x='condition',y='value',hue="model",order=['right_more','right','right_less','center','left_less','left','left_more'],data=df_merge,kind='point',ci=None)
+    sns.catplot(x='condition',y='value',hue="model",order=['new_tool','center','new_material'],data=df_merge,kind='point',ci=None,linestyles='-')
     #%%
     
     df_S = pickle.load(open('df_S_val.df','rb'))
@@ -440,7 +568,7 @@ if __name__ == "__main__":
     
     df_merge = pd.concat([df_S,df_V,df_VS])
     #df_merge = pd.concat([df_S,df_VS])
-    #df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
+    #df_merge = pd.melt(df_merge,id_vars=['condition','model','test_number'],value_vars=['Per Axis RMSEx','Per Axis RMSEy','Per Axis RMSEz'],var_name = 'metric',value_name='value')
     df_merge = pd.melt(df_merge,id_vars=['condition','model','test_number'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
     
     sns.catplot(data=df_merge,x='model',y='value',col='condition',kind='bar')
@@ -533,9 +661,11 @@ if __name__ == "__main__":
     df_S_F = pickle.load(open('df_S_test_ablate_F.df','rb'))
     df_S_P = pickle.load(open("df_S_test_ablate_P.df","rb"))
     df_V = pickle.load(open('df_V_test.df','rb'))
-    df_VS_F = pickle.load(open('df_VS_test_ablate_F.df','rb'))
-    df_VS_P = pickle.load(open('df_VS_test_ablate_P.df','rb'))
+    df_VS_F = pickle.load(open('df_VS_test_ablate_F2.df','rb'))
+    df_VS_P = pickle.load(open('df_VS_test_ablate_P2.df','rb'))
     df_VS = pickle.load(open('df_VS_test.df','rb'))
+    df_VRNN = pickle.load(open('df_V_RNN_test.df','rb'))
+    
     df_S_F['model']='S_F'
     df_S_P['model']='S_P'
     df_VS_F['model']='VS_F'
@@ -548,7 +678,13 @@ if __name__ == "__main__":
     df_VS_P['test_number'] = test_numbering_list
     df_VS_F['test_number'] = test_numbering_list
     df_S_P['test_number'] = test_numbering_list
-    df_merge = pd.concat([df_S,df_V,df_VS,df_VS_F,df_VS_P,df_S_F,df_S_P])
-    df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis nRMSEx','Per Axis nRMSEy','Per Axis nRMSEz'],var_name = 'metric',value_name='value')
+    df_VRNN['test_number'] = test_numbering_list
     
-    sns.catplot(x='model',y='value',hue="model",col='condition',row='metric',col_order=['right_more','right','right_less','center','left_less','left','left_more'],data=df_merge,kind='point',ci=None)
+    #df_merge = pd.concat([df_S,df_V,df_VS,df_VS_F,df_VS_P,df_S_F,df_S_P,df_VRNN])
+    df_merge = pd.concat([df_S,df_S_P,df_S_F,df_VS,df_VS_P,df_VS_F])
+    
+    df_merge = pd.melt(df_merge,id_vars=['condition','model'],value_vars=['Per Axis RMSEx','Per Axis RMSEy','Per Axis RMSEz'],var_name = 'metric',value_name='value')
+    df_merge.to_csv("ablation_nRMSD2.csv")    
+    #sns.catplot(x='model',y='value',hue="model",col='condition',row='metric',col_order=['right_more','right','right_less','center','left_less','left','left_more'],data=df_merge,kind='point',ci=None)
+    sns.catplot(x='condition',y='value',hue="model",row='metric',data=df_merge,kind='bar',ci=None)
+    sns.catplot(x='condition',y='value',hue="model",order=['new_tool','center','new_material'],data=df_merge,kind='point',ci=None,linestyles='-')

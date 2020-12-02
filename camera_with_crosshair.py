@@ -11,6 +11,7 @@ import numpy as np
 import sys
 
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import WrenchStamped
 
 def left_image_callback(msg):
 	
@@ -24,6 +25,10 @@ def left_image_callback(msg):
 	
 	# draw the crosshairs 
 	cv2.rectangle(image, (int(width/2-rect_h/2),int(height/2-rect_h/2)), (int(width/2+rect_h/2),int(height/2+rect_h/2)) , (0,0,255), 3)
+	# draw the predicted forces from the neural net
+	cv2.putText(image,'X: '+str(round(nn_force_pred[0],2)),(20,20),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255))
+	cv2.putText(image,'Y: '+str(round(nn_force_pred[1],2)),(20,60),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255))
+	cv2.putText(image,'Z: '+str(round(nn_force_pred[2],2)),(20,100),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255))
 	
 	cv2.namedWindow("left", flags= 16)
 	cv2.imshow("left",image)
@@ -42,13 +47,23 @@ def right_image_callback(msg):
 	rect_w = 300
 	
 	# draw the crosshairs 
-	#cv2.rectangle(image, (int(width/2-rect_h/2),int(height/2-rect_h/2)), (int(width/2+rect_h/2),int(height/2+rect_h/2)) , (0,0,255), 3)
+	cv2.rectangle(image, (int(width/2-rect_h/2),int(height/2-rect_h/2)), (int(width/2+rect_h/2),int(height/2+rect_h/2)) , (0,0,255), 3)
+	# draw the predicted forces from the neural net
+	cv2.putText(image,'X: '+str(round(nn_force_pred[0],2)),(20,20),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255))
+	cv2.putText(image,'Y: '+str(round(nn_force_pred[1],2)),(20,60),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255))
+	cv2.putText(image,'Z: '+str(round(nn_force_pred[2],2)),(20,100),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,255))
 	
 	cv2.namedWindow("right", flags= 16)
 	cv2.imshow("right",image)
 	cv2.moveWindow("right", 3000, 0)
 	cv2.setWindowProperty("right", cv2.WND_PROP_FULLSCREEN, 1)
 	cv2.waitKey(3)
+	
+def nn_pred_callback(msg):
+	global nn_force_pred
+	nn_force_pred[0] = msg.wrench.force.x
+	nn_force_pred[1] = msg.wrench.force.y
+	nn_force_pred[2] = msg.wrench.force.z
 
 if __name__ == '__main__':
 	
@@ -59,6 +74,9 @@ if __name__ == '__main__':
 	rate = rospy.Rate(30)
 	
 	global bridge
+	global nn_force_pred
+	
+	nn_force_pred = np.zeros((3,))
 	
 	bridge = cv_bridge.CvBridge()
 	
@@ -68,5 +86,7 @@ if __name__ == '__main__':
 		right_image_sub = rospy.Subscriber('/camera/right/image_color',Image,right_image_callback)
 	else:
 		print('Incorrect side specified!')
+		
+	nn_pred_sub = rospy.Subscriber('/nn_force_pred',WrenchStamped,nn_pred_callback,queue_size=None)
 	
 	rospy.spin()

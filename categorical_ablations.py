@@ -35,7 +35,7 @@ if __name__ == "__main__":
     
     file_dir = '../experiment_data' # define the file directory for dataset
     
-    model_type = "S"
+    model_type = "VS"
     feat_extract = False
     force_align = False
     
@@ -62,13 +62,14 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,34):
+    for i in range(1,40):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
     train_list = [1,3,5,7,
                   8,10,12,14,
                   15,17,19,21]
+    
     val_list = [2,6,
                 9,13,
                 16,20]
@@ -82,7 +83,7 @@ if __name__ == "__main__":
                  'crop_list': crop_list,
                  'trans_function': trans_function}
     
-    dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,val_list,model_type,config_dict)
+    
     
     #%% First ablation: remove the force data
     
@@ -100,14 +101,16 @@ if __name__ == "__main__":
     for ab_cond in ['F','P']:
         if ab_cond == 'F':
             mask_feature = force_features
-            ab_weight_file = weight_file + "_F.dat"
+            ab_weight_file = weight_file + "_F_local.dat"
+            print(ab_weight_file)
         else:
             mask_feature = pos_features
-            ab_weight_file = weight_file + "_P.dat"
+            ab_weight_file = weight_file + "_P_local.dat"
+            print(ab_weight_file)
             
         mask = np.isin(qty,mask_feature,invert=False)
         #mask = np.isin(qty,force_features,invert=False)
-        
+        dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,val_list,model_type,config_dict)
         for loader in dataloaders.values():
             loader.dataset.mask_labels(mask)
         
@@ -125,7 +128,7 @@ if __name__ == "__main__":
         model,train_history,val_history,_ = mdl.train_model(model,
                                                              criterion, optimizer,
                                                              dataloaders, dataset_sizes,  
-                                                             num_epochs=100,
+                                                             num_epochs=5,
                                                              L1_loss=0.001,
                                                              model_type= model_type,
                                                              weight_file=ab_weight_file,

@@ -24,12 +24,12 @@ class RNN_ImgDataset(data.Dataset):
         
         self.lookback = lookback
         self.skips = skips
-        self.image_folder_prefix = '/imageset'
+        self.image_folder_prefix = '/space_time/imageset'
         self.file_dir = filedir
         self.image_dir = filedir
         self.label_array,self.lookup = self.read_labels(filedir,data_sets)
         self.image_list,self.dataset_list = self.generate_image_list(self.image_dir,data_sets)
-    
+        self.include_torque= False
         self.grayscale_convert = transforms.Compose([transforms.ToPILImage(),transforms.Grayscale()])
         self.trans_function = trans_function
         
@@ -44,7 +44,7 @@ class RNN_ImgDataset(data.Dataset):
         
         if self.skips+1>self.lookback:
             print("Warning: Skip step is larger than look back range.")
-
+        '''
         # grab the dataset in which this sequence belongs to
         image_mean_idx = self.dataset_list[index]
         # get the image mean
@@ -58,14 +58,14 @@ class RNN_ImgDataset(data.Dataset):
             
             x = self.grayscale_convert(x) # convert to gray scale
             if len(self.crop_list)> 0 : # perform the image crop
-                '''use the crop list'''
+                #use the crop list
                 t = self.crop_list[image_mean_idx][0]
                 l = self.crop_list[image_mean_idx][1]
                 h = self.crop_list[image_mean_idx][2]
                 w = self.crop_list[image_mean_idx][3]
                 x = transforms.functional.crop(x,top=t,left=l,height=h,width=w)
             else:
-                '''Use the default crop'''
+                #Use the default crop
                 #x = transforms.functional.crop(x,top=57,left=320,height=462,width=462)
                 x = transforms.functional.crop(x,top=100,left=320,height=250,width=250) #new dataset
             
@@ -74,7 +74,8 @@ class RNN_ImgDataset(data.Dataset):
             img_list.append(x)
         
         x = torch.stack(img_list,axis=0)
-        
+        '''
+        x = transforms.ToTensor()(im.open(self.image_list[index]))
         x = self.trans_function(x) # convert to tensor and normalize by image net
     
         y = self.label_array[idx][1:4]
@@ -118,13 +119,13 @@ class RNN_ImgDataset(data.Dataset):
         
         if data_sets is not None:
             for i in data_sets:
-                new_files = natsort.humansorted(glob.glob(image_folder_list[i-1]+"/*.jpg"))
+                new_files = natsort.humansorted(glob.glob(image_folder_list[i-1]+"/img*.jpg"))
                 file_list = file_list + new_files
                 dataset_list = dataset_list + [i for n in range(len(new_files))]
         else:
             for i in range(len(image_folder_list)):
-                new_files = natsort.humansorted(glob.glob(image_folder_list[i]+"/*.jpg"))
-                file_list = file_list + natsort.humansorted(glob.glob(image_folder_list[i]+"/*.jpg")) 
+                new_files = natsort.humansorted(glob.glob(image_folder_list[i]+"/img*.jpg"))
+                file_list = file_list + natsort.humansorted(glob.glob(image_folder_list[i]+"/img*.jpg")) 
                 dataset_list = dataset_list + [i+1 for n in range(len(new_files))]
         
         return file_list,dataset_list    
@@ -240,13 +241,13 @@ class ImgDataset(data.Dataset):
         
         if data_sets is not None:
             for i in data_sets:
-                new_files = natsort.humansorted(glob.glob(image_folder_list[i-1]+"/*.jpg"))
+                new_files = natsort.humansorted(glob.glob(image_folder_list[i-1]+"/img*.jpg"))
                 file_list = file_list + new_files
                 dataset_list = dataset_list + [i for n in range(len(new_files))]
         else:
             for i in range(len(image_folder_list)):
-                new_files = natsort.humansorted(glob.glob(image_folder_list[i]+"/*.jpg"))
-                file_list = file_list + natsort.humansorted(glob.glob(image_folder_list[i]+"/*.jpg")) 
+                new_files = natsort.humansorted(glob.glob(image_folder_list[i]+"/img*.jpg"))
+                file_list = file_list + natsort.humansorted(glob.glob(image_folder_list[i]+"/img*.jpg")) 
                 dataset_list = dataset_list + [i+1 for n in range(len(new_files))]
         
         return file_list,dataset_list
@@ -286,6 +287,11 @@ class ImgDataset(data.Dataset):
         self.label_array = (self.label_array-mean)/stdev
         
         return mean,stdev
+
+    def mask_labels(self,feature_set):
+        
+        '''masks the state dataset by setting the features to zero'''
+        self.label_array[:,feature_set] = 0.0
 
 class StateDataset(data.Dataset):
     
@@ -370,7 +376,7 @@ class StateDataset(data.Dataset):
         
         '''masks the state dataset by setting the features to zero'''
         self.label_array[:,feature_set] = 0.0
-        
+      
     
 def realign_forces(dataset,pose_idx,psm_force_idx):
     
