@@ -73,14 +73,14 @@ global state_input
 state_input = np.zeros((54,))
 
 # initialize the subscribers
-PSM1_pos_c = rospy.Subscriber('/dvrk/PSM1/position_cartesian_current',PoseStamped,cb_PSM1_pos_c)
-PSM1_pos_d = rospy.Subscriber('/dvrk/PSM1/position_cartesian_dseired',PoseStamped,)
-PSM1_joint_c = rospy.Subscriber('/dvrk/PSM1/state_joint_current',JointState,cb_PSM1_joint_c)
-PSM1_joint_d = rospy.Subscriber('/dvrk/PSM1/state_joint_desired',JointState,cb_PSM1_joint_d)
-#PSM1_jaw_c = rospy.Subscriber('/dvrk/PSM1/state_jaw_current',JointState,cb_PSM1_jaw_c)
-#PSM1_jaw_d = rospy.Subscriber('/dvrk/PSM1/state_jaw_desired',JointState,cb_PSM1_jaw_d)
-#PSM1_twist = rospy.Subscriber('/dvrk/PSM1/twist_body_current',TwistStamped,cb_PSM1_twist)
-#PSM1_wrench = rospy.Subscriber('/dvrk/PSM1/wrench_body_current',WrenchStamped,cb_PSM1_wrench)
+PSM1_pos_c = rospy.Subscriber('/dvrk/PSM2/position_cartesian_current',PoseStamped,cb_PSM1_pos_c)
+PSM1_pos_d = rospy.Subscriber('/dvrk/PSM2/position_cartesian_desired',PoseStamped,)
+PSM1_joint_c = rospy.Subscriber('/dvrk/PSM2/state_joint_current',JointState,cb_PSM1_joint_c)
+#PSM1_joint_d = rospy.Subscriber('/dvrk/PSM2/state_joint_desired',JointState,cb_PSM1_joint_d)
+PSM1_jaw_c = rospy.Subscriber('/dvrk/PSM2/state_jaw_current',JointState,cb_PSM1_jaw_c)
+PSM1_jaw_d = rospy.Subscriber('/dvrk/PSM2/state_jaw_desired',JointState,cb_PSM1_jaw_d)
+PSM1_twist = rospy.Subscriber('/dvrk/PSM2/twist_body_current',TwistStamped,cb_PSM1_twist)
+PSM1_wrench = rospy.Subscriber('/dvrk/PSM2/wrench_body_current',WrenchStamped,cb_PSM1_wrench)
 
 state_publisher = rospy.Publisher('ml_state_input',Float64MultiArray,queue_size = 1)
 state_multarray = Float64MultiArray()

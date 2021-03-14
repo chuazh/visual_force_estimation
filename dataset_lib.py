@@ -340,6 +340,7 @@ class StateDataset(data.Dataset):
         
         if data_sets is not None:
             for i in data_sets:
+                print(file_list[i-1])
                 data = np.loadtxt(file_list[i-1],delimiter=",")
                 if self.spatial_force:
                     data = realign_forces(data, np.array([10,11,12,13]), np.array([55,56,57]))

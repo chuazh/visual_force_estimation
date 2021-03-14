@@ -256,10 +256,11 @@ pos_features = ['px','py','pz','qx','qy','qz','qw',
    'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
    'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
 
+#%%
 if __name__ == "__main__":
 
     model_type = "S"
-    ablate = 0#"F"
+    ablate = "F"
     resnet_type= 50
     feat_extract = False
     force_align = False
@@ -277,7 +278,7 @@ if __name__ == "__main__":
         crop_list.append((70,145,462,462))
     crop_list.append((30,250,462,462))
     '''
-    for i in range(1,41):
+    for i in range(1,48):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
         
@@ -309,8 +310,13 @@ if __name__ == "__main__":
     
     if resnet_type == 152 and model_type!="S":
         weight_file = weight_file + "_152"
-        
-    weight_file = weight_file + "_PSM1.dat"
+    
+    if ablate=="P":
+        weight_file = weight_file+"_P"
+    elif ablate=="F":
+        weight_file = weight_file+"_F"
+    
+    weight_file = weight_file + ".dat"
     
     model.load_state_dict(torch.load(weight_file))
     
@@ -320,14 +326,14 @@ if __name__ == "__main__":
     elif encode and model_type == "V":
         model.fc = torch.nn.Identity()
         
-    
+#%%    
     # load the dataset
     
-    file_dir = '../PSM1_data' # define the file directory for dataset
-    '''train_list = [1,3,5,7,
+    file_dir = '../../experiment_data' # define the file directory for dataset
+    train_list = [1,3,5,7,
                   8,10,12,14,
-                  15,17,19,21]'''
-    train_list = [1,3,5,7]
+                  15,17,19,21,41,42]
+    #train_list = [1,3,5,7,43,45]
     val_list = [1]
     config_dict={'file_dir':file_dir,
              'include_torque': False,
@@ -376,16 +382,20 @@ if __name__ == "__main__":
     test_list_full = [2,6,9,13,16,20]
     condition_list = ['center','center','right','right','left','left']
     '''
+    '''
     test_list_full =  [4,8]
     condition_list = ['center','center']
-    '''test_list_full =  [4,11,18,
+    '''
+    
+    test_list_full =  [4,11,18,
                        22,23,
                        24,25,
                        26,27,
                        28,29,
                        32,33,
                        34,36,
-                       37,38,39]
+                       37,38,39,
+                       45,46,47]
     
     
     condition_list = ['center','right','left',
@@ -395,7 +405,8 @@ if __name__ == "__main__":
                       'left_more','left_more',
                       'new_tool','new_tool',
                       'new_material','new_material',
-                      'center','right','left']'''
+                      'center','right','left',
+                      'z_mid','z_high','z_low']
     
     
     
@@ -472,11 +483,22 @@ if __name__ == "__main__":
         df_metrics = pd.DataFrame(metrics_list)
         
         import pickle
-        df_filedir = 'df_'+model_type+'_test_PSM1.df'
+        df_filedir = 'df_'+model_type
+        if ablate == "P":
+            df_filedir = df_filedir + "_ablate_P"
+        elif ablate == "F":
+            df_filedir = df_filedir + "_ablate_F"
+        df_filedir = df_filedir + '_test.df'
+        
         pickle.dump(df_metrics,open(df_filedir,'wb'))
         
         if not use_predlist:
-            preds_filedir = "preds_"+model_type+'_PSM1.preds'
+            preds_filedir = "preds_"+model_type
+            if ablate == "P":
+                preds_filedir = preds_filedir + "_ablate_P"
+            elif ablate == "F":
+                preds_filedir = preds_filedir + "_ablate_F"
+            preds_filedir += '.preds'
             pickle.dump(predictions_list,open(preds_filedir,'wb'))
     
                 
@@ -677,7 +699,7 @@ if __name__ == "__main__":
     df_S_P['test_number'] = test_numbering_list
     df_VS_P['test_number'] = test_numbering_list
     df_VS_F['test_number'] = test_numbering_list
-    df_S_P['test_number'] = test_numbering_list
+    df_S_F['test_number'] = test_numbering_list
     df_VRNN['test_number'] = test_numbering_list
     
     #df_merge = pd.concat([df_S,df_V,df_VS,df_VS_F,df_VS_P,df_S_F,df_S_P,df_VRNN])
@@ -688,3 +710,6 @@ if __name__ == "__main__":
     #sns.catplot(x='model',y='value',hue="model",col='condition',row='metric',col_order=['right_more','right','right_less','center','left_less','left','left_more'],data=df_merge,kind='point',ci=None)
     sns.catplot(x='condition',y='value',hue="model",row='metric',data=df_merge,kind='bar',ci=None)
     sns.catplot(x='condition',y='value',hue="model",order=['new_tool','center','new_material'],data=df_merge,kind='point',ci=None,linestyles='-')
+    
+
+    

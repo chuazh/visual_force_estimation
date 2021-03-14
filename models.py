@@ -129,6 +129,8 @@ def VisionModel(output_dim,layer_depth=4):
 
 def StateModel(input_dim,output_dim):
     
+    '''existing icra paper S model'''
+    
     model = nn.Sequential(
     nn.Linear(input_dim,500),
     nn.BatchNorm1d(500),

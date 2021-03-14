@@ -50,7 +50,7 @@ unnorm = transforms.Normalize([-0.485/0.229, -0.456/0.224, -0.406/0.225], [1/0.2
 
 if __name__ == "__main__":
     
-    file_dir = '../PSM1_data' # define the file directory for dataset
+    file_dir = '/home/charm/data_driven_force_estimation/experiment_data' # define the file directory for dataset
     
     model_type = "S"
     feat_extract = False
@@ -64,9 +64,6 @@ if __name__ == "__main__":
     if force_align and model_type!= "V" :
         weight_file = weight_file + "_faligned"
         
-    weight_file = weight_file + "PSM1.dat"
-    
-
     if model_type == "V_RNN":
         trans_function = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     else:
@@ -81,18 +78,20 @@ if __name__ == "__main__":
     
     crop_list = []
     
-    for i in range(1,40):
+    for i in range(1,48):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
-    '''    
+        
     train_list = [1,3,5,7,
                   8,10,12,14,
-                  15,17,19,21]
+                  15,17,19,21,41,42]
     val_list = [2,6,
                 9,13,
-                16,20]'''
-    train_list = [1,3,5,7]
-    val_list = [2,6]
+                16,20,44]
+    
+
+    #train_list = [1,3,5,7,43,45]
+    #val_list = [2,6,44,46]
     #test_list = [4,11,18,
                  #22,23,24,25,26,27,28,29,32,33]
     test_list = [4,8]
@@ -105,6 +104,41 @@ if __name__ == "__main__":
                  'trans_function': trans_function}
     
     dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=False)
+    
+    ## if we ablate uncomment these lines -----------------------------
+    qty = ['t','fx','fy','fz','tx','ty','tz',
+       'px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
+       'q1','q2','q3','q4','q5','q6','q7',
+       'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
+       'tq1','tq2','tq3','tq4','tq5','tq6','tq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d',
+       'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
+       'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6',
+       'J1','J2','J3','J4','J5','J6','J1','J2','J3','J4','J5','J6']
+    
+    force_features = ['tq1','tq2','tq3','tq4','tq5','tq6','tq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d',
+       'tq1d','tq2d','tq3d','tq4d','tq5d','tq6d','tq7d',
+       'psm_fx','psm_fy','psm_fz','psm_tx','psm_ty','psm_tz']
+       
+    pos_features = ['px','py','pz','qx','qy','qz','qw',
+       'vx','vy','vz','wx','wy','wz',
+       'q1','q2','q3','q4','q5','q6','q7',
+       'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
+       'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
+    
+    mask_feature = pos_features
+    mask = np.isin(qty,mask_feature,invert=False)
+    
+    for loader in dataloaders.values():
+       loader.dataset.mask_labels(mask)   
+       
+    weight_file = weight_file + "_P" # add ablation type
+    
+    #end of ablation code
+    
     #%%
     #generate_grid(dataloaders['test'].dataset,64)
 
@@ -116,15 +150,17 @@ if __name__ == "__main__":
     elif (model_type == "V") or (model_type == "V_RNN"):
         model = mdl.VisionModel(3)
     
+    weight_file = weight_file + ".dat"
+    
     # create loss function
     criterion = nn.MSELoss(reduction='sum')
     # define optimization method
-    optimizer = opt.Adam(model.parameters(),lr=0.001,weight_decay=0)
+    optimizer = opt.Adam(model.parameters(),lr=1e-3,weight_decay=0)
     model,train_history,val_history,_ = mdl.train_model(model,
                                                          criterion, optimizer,
                                                          dataloaders, dataset_sizes,  
                                                          num_epochs=100,
-                                                         L1_loss=0.001,
+                                                         L1_loss=1e-3,
                                                          model_type= model_type,
                                                          weight_file=weight_file,
                                                          suppress_log=False)
