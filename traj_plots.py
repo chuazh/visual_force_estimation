@@ -27,7 +27,7 @@ def plot_trajectory_from_preds(pred,label,model,miu,sigma,ax,plot_label=False,pl
     label = label[80:-10,:]
     
     if model != "D":
-        pred = (pred*sigma)+miu
+        pred = (pred*sigma)+miu #NOTE THAT THIS ASSUMES THAT THE PREDS AREN'T NORMALIZED
     
     # plot each of the axes:
     for i in range(3):
@@ -58,7 +58,7 @@ def compute_RMSE(pred,label,model,miu,sigma):
         pred = pred[80:-10,:]
     
     if model != "D":    
-        pred = (pred*sigma)+miu
+        pred = (pred*sigma)+miu #NOTE THAT THIS ASSUMES THAT THE PREDS AREN'T NORMALIZED
     
     # compute the per axis RMSE
     per_axis_RMSE = np.sqrt(np.mean((pred-label[80:-10,1:4])**2,axis=0))
@@ -143,7 +143,8 @@ pred_dict['VS-P-only'] =  pickle.load(open("preds_VS_ablate_Fcheck.preds","rb"))
 pred_dict['S-F-only'] =  pickle.load(open("preds_S_ablate_Pcheck.preds","rb"))
 pred_dict['S-P-only'] =  pickle.load(open("preds_S_ablate_Fcheck.preds","rb"))
 
-model_list = ['V','VS','S','RNN','D','VS-F-only','VS-P-only','S-F-only','S-P-only']
+#model_list = ['V','VS','S','RNN','D','VS-F-only','VS-P-only','S-F-only','S-P-only']
+model_list = ['V','VS','S','D','VS-F-only','VS-P-only','S-F-only','S-P-only']
 #model_list = ['V','VS','S','VS-F-only','VS-P-only','S-F-only','S-P-only']
 #model_list = ['V','VS','S']
 
@@ -190,7 +191,9 @@ for test in test_list_full:
     print('condition: ' + condition_list[tr])
     for model in model_list:
         print('model: ' + model)
-        rmse = compute_RMSE(pred_dict[model][tr], label, model,miu,sigma)
+        #rmse = compute_RMSE(pred_dict[model][tr], label, model,miu,sigma)
+        rmse = compute_RMSE_noRNN(pred_dict[model][tr], label, model,miu,sigma)
+        #rmse = compute_RMSE(pred_dict[model][tr], label, model,np.zeros((3,)),np.zeros(())) #hard code zeros to miu and sigma because I already normalizd in model_eval.py
         df_dict = {'model':model,'condition':condition_list[tr],'RMSEx':rmse[0],'RMSEy':rmse[1],'RMSEz':rmse[2],'test_number':test_numbering_list[tr]}
         test_RMSE=test_RMSE.append(pd.DataFrame(df_dict,index=[0]),ignore_index=True)
         #train_RMSE=train_RMSE.append(pd.DataFrame(df_dict,index=[0]),ignore_index=True)
@@ -216,7 +219,7 @@ sns.catplot(x='condition',y='value',hue="model",row='metric',order=['right_more'
 #%%
 test_RMSE.to_csv("RMSE_all.csv")
 #%% INDIV PLOT   
-tr_num=4
+tr_num=34
 tr = test_list_full.index(tr_num)
 condition = condition_list[tr]
 fig,ax = plt.subplots(nrows=3,ncols=1,sharex=True)

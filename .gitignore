@@ -1,6 +1,13 @@
 *.csv
 *.dat
 *.df
+*.avi
 runs
 *.preds
+*.pred
+*.png
+*.zip
+*.jpg
+*.txt
+*.enc
 __pycache__

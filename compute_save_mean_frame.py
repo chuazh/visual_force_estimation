@@ -43,7 +43,7 @@ def mean_frame_computation_exp_smoothing(current_frame, mean_frame, alpha=0.5):
 
 #%% MEAN FRAME COMPUTATION
 # We calculate the mean frames for each video set and save it in the directory over which it belongs.
-for sequence in range(39):
+for sequence in range(39,40):
     file_dir = "../experiment_data/imageset_"+str(sequence+1)
     file_list = glob.glob(file_dir+ "/*.jpg")
     file_list = humansorted(file_list)
@@ -76,7 +76,7 @@ import os
 # initialize the datasets
 
 crop_list = []
-for i in range(0,39):
+for i in range(0,48):
     #crop_list.append((50,350,300,300))
     crop_list.append((270-150,480-150,300,300))
 model_type = "V_RNN"
@@ -97,7 +97,7 @@ try:
 except:
     print("directory exists")
 
-for dataset_num in range(0,1):
+for dataset_num in range(39,40):
     test_list = [dataset_num+1]
     dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=False)
 

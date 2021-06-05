@@ -16,6 +16,7 @@ from geometry_msgs.msg import WrenchStamped
 def left_image_callback(msg):
 	
 	global bridge
+	global debug
 	
 	image = bridge.imgmsg_to_cv2(msg,desired_encoding="bgr8")
 	
@@ -32,13 +33,15 @@ def left_image_callback(msg):
 	
 	cv2.namedWindow("left", flags= 16)
 	cv2.imshow("left",image)
-	cv2.moveWindow("left", 2000, 0)
-	cv2.setWindowProperty("left", cv2.WND_PROP_FULLSCREEN, 1) 
+	if not debug:
+	    cv2.moveWindow("left", 2000, 0)
+	    cv2.setWindowProperty("left", cv2.WND_PROP_FULLSCREEN, 1) 
 	cv2.waitKey(3)
 	
 def right_image_callback(msg):
 	
 	global bridge
+	global debug
 	
 	image = bridge.imgmsg_to_cv2(msg,desired_encoding="bgr8")
 	
@@ -55,8 +58,9 @@ def right_image_callback(msg):
 	
 	cv2.namedWindow("right", flags= 16)
 	cv2.imshow("right",image)
-	cv2.moveWindow("right", 3000, 0)
-	cv2.setWindowProperty("right", cv2.WND_PROP_FULLSCREEN, 1)
+	if not debug:
+	    cv2.moveWindow("right", 3000, 0)
+	    cv2.setWindowProperty("right", cv2.WND_PROP_FULLSCREEN, 1)
 	cv2.waitKey(3)
 	
 def nn_pred_callback(msg):
@@ -67,7 +71,10 @@ def nn_pred_callback(msg):
 
 if __name__ == '__main__':
 	
+	global debug 
+	
 	side = sys.argv[1]
+	debug = int(sys.argv[2])
 	
 	nodename = "crosshair_display_" + side
 	rospy.init_node(nodename)

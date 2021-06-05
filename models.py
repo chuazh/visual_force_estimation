@@ -34,8 +34,9 @@ class StateVisionModel(nn.Module):
   model_out: the number of output dimensions
   '''
   
-  def __init__(self,cnn_out,augmented_in,model_out,resnet_type= 50,feature_extract=False,layer_depth=4):
+  def __init__(self,cnn_out,augmented_in,model_out,resnet_type= 50,feature_extract=False,layer_depth=4,TFN=False):
     super(StateVisionModel,self).__init__()
+    self.TFN=TFN
     if resnet_type != 50:
         self.cnn = models.resnet152(pretrained=True,progress=False)
     else:
@@ -52,7 +53,13 @@ class StateVisionModel(nn.Module):
     
     self.cnn.fc = nn.Linear(self.cnn.fc.in_features,cnn_out) # the fully connected layer will compress the output into 30 params
     # create a few more layers to take use through the data
-    self.fc1 = nn.Linear(cnn_out+augmented_in,180)
+    if TFN:
+        self.fc1 = nn.Linear((cnn_out+1)*(cnn_out+1),180)
+        self.state_encode_layer1 = nn.Linear(augmented_in,cnn_out)
+        self.state_encode_layer2 = nn.Linear(cnn_out,cnn_out)
+        self.state_encode_layer3 = nn.Linear(cnn_out,cnn_out)
+    else:
+        self.fc1 = nn.Linear(cnn_out+augmented_in,180)
     self.fc2 = nn.Linear(180,50)
     self.fc3 = nn.Linear(50,model_out)
 
@@ -63,8 +70,16 @@ class StateVisionModel(nn.Module):
   def forward(self,image,data):
     x1 = self.cnn(image)
     x2 = data
-
-    x = torch.cat((x1,x2),dim=1)
+    if self.TFN:
+        x_aug = F.relu(self.state_encode_layer1(x2))
+        x_aug = F.relu(self.state_encode_layer2(x_aug))
+        x_aug = self.state_encode_layer3(x_aug)
+        x_aug = torch.cat((x_aug,torch.ones(x_aug.shape[0],1).to(x_aug.device)),dim=1)
+        x1 = torch.cat((x1,torch.ones(x1.shape[0],1).to(x1.device)),dim=1)
+        x = torch.bmm(x1.unsqueeze(2),x_aug.unsqueeze(1))
+        x = torch.flatten(x,start_dim=1)
+    else:
+        x = torch.cat((x1,x2),dim=1)
     x = F.relu(self.bn1(self.fc1(x)))
     x = F.relu(self.bn2(self.fc2(x)))
     x = self.fc3(x)
@@ -107,7 +122,41 @@ class StateVisionModel_deep(nn.Module):
 
     return x
 
-
+class BabyVisionModel(nn.Module):
+    
+    def __init__(self):
+        super(BabyVisionModel,self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 16, 7, stride=2, padding=1),
+            nn.BatchNorm2d(16),            
+            nn.ReLU(),
+            nn.Conv2d(16, 32, 3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, 3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, 3, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 512, 5, stride=2, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU())
+        self.linear = nn.Linear(4608,1024)
+        self.linear2 = nn.Linear(1024,3)
+    def forward(self,x):
+        x = self.encoder(x)
+        x = torch.flatten(x,start_dim=1)
+        x = self.linear(x)
+        x = F.relu(x)
+        x = self.linear2(x)
+        
+        return x
+        
+        
 def VisionModel(output_dim,layer_depth=4):
     
     model = models.resnet50(pretrained=True)
@@ -125,7 +174,7 @@ def VisionModel(output_dim,layer_depth=4):
     #model_ft.load_state_dict(state_dict)
     
     return model
-
+ 
 
 def StateModel(input_dim,output_dim):
     
@@ -155,7 +204,7 @@ def StateModel(input_dim,output_dim):
     
     return model
 
-def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False, use_tpu=False, tensorboard = True):
+def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epochs=10, model_type = "VS", weight_file = "best_modelweights.dat", L1_loss = 0 ,suppress_log=False, hyperparam_search = False, use_tpu=False, multigpu=False,tensorboard = True):
     
     if use_tpu:
         print("using TPU acceleration, model and optimizer should already be loaded onto tpu device")
@@ -164,8 +213,12 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         if torch.cuda.is_available():
             print("using GPU acceleration")
-    
-        model = model.to(device,dtype=torch.float)
+        if multigpu and torch.cuda.device_count() > 1:
+            print("multigpu enabled")
+            model = nn.DataParallel(model)
+            model = model.to(device,dtype=torch.float)
+        else:
+            model = model.to(device,dtype=torch.float)
 
     since = time.time()
     best_loss = np.Inf
@@ -237,8 +290,10 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, num_epo
                               L1 += L1_loss*torch.sum(torch.abs(param))
                       loss = loss+L1 
                   
-                  
-                  loss.backward()
+                  if multigpu:
+                      loss.mean().backward()
+                  else:
+                      loss.backward()
                   if use_tpu:
                       xm.optimizer_step(optimizer,barrier=True)
                   else:

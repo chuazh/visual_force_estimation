@@ -257,249 +257,259 @@ pos_features = ['px','py','pz','qx','qy','qz','qw',
    'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
 
 #%%
-if __name__ == "__main__":
+'''
+condition_list = [('V',None,False),
+                  ('S',None,False),
+                  ('S','P',False),
+                  ('S','F',False),
+                  ('VS',None,False),
+                  ('VS','P',False),
+                  ('VS','F',False),
+                  ('V_RNN',None,True)]'''
+condition_list =[('V',None,False)]
 
-    model_type = "S"
-    ablate = "F"
-    resnet_type= 50
-    feat_extract = False
-    force_align = False
-    encode = False
-    crop_list = []
-    use_predlist = False
-    '''
-    for i in range(1,14):
-        crop_list.append((57,320,462,462))
-    for i in range(14,17):
-        crop_list.append((40,400,462,462))
-    for i in range(17,20):
-        crop_list.append((57,180,462,462))
-    for i in range(20,23):
-        crop_list.append((70,145,462,462))
-    crop_list.append((30,250,462,462))
-    '''
-    for i in range(1,48):
-        #crop_list.append((50,350,300,300))
-        crop_list.append((270-150,480-150,300,300))
-        
-    # Define a transformation for the images
-    if model_type == "V_RNN":
-        trans_function =  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    else:
-        trans_function = transforms.Compose([transforms.Resize((224,224)),
-                                             transforms.ToTensor(),
-                                             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
-    
-    # load the model
-    if model_type == "VS":
-        model = mdl.StateVisionModel(30, 54, 3,resnet_type=resnet_type,feature_extract=feat_extract)
-    elif model_type == "S":
-        model  = mdl.StateModel(54, 3)
-    elif model_type == "VS_deep":
-        model = mdl.StateVisionModel_deep(30, 54, 3)
-    elif model_type =="V" or model_type=="V_RNN":
-        model = mdl.VisionModel(3)
-    
-    weight_file =  weight_file = "best_modelweights_" + model_type
-    
-    if model_type!="S" and feat_extract:
-        weight_file="best_modelweights_" + model_type + "_ft"
-        
-    if force_align and model_type!= "V" :
-        weight_file = weight_file + "_faligned"
-    
-    if resnet_type == 152 and model_type!="S":
-        weight_file = weight_file + "_152"
-    
-    if ablate=="P":
-        weight_file = weight_file+"_P"
-    elif ablate=="F":
-        weight_file = weight_file+"_F"
-    
-    weight_file = weight_file + ".dat"
-    
-    model.load_state_dict(torch.load(weight_file))
-    
-    # uncomment this to do a encoding using the pre-trained RESNET
-    if encode and model_type=="V_RNN":
-        model.fc = torch.nn.Tanh()
-    elif encode and model_type == "V":
-        model.fc = torch.nn.Identity()
-        
-#%%    
-    # load the dataset
-    
-    file_dir = '../../experiment_data' # define the file directory for dataset
-    train_list = [1,3,5,7,
-                  8,10,12,14,
-                  15,17,19,21,41,42]
-    #train_list = [1,3,5,7,43,45]
-    val_list = [1]
-    config_dict={'file_dir':file_dir,
-             'include_torque': False,
-             'spatial_forces': force_align,
-             'custom_state': None,
-             'batch_size': 32,
-             'crop_list': crop_list,
-             'trans_function': trans_function}
-    
-    
-    
-    #%%   Manual Plotting
-    
-    test_list = [2,6,9,13,16,20]  
-    loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
-    test_loader = loader_dict['test']
-    if ablate == "F":
-        mask = np.isin(qty_full,force_features,invert=False)
-        test_loader.dataset.mask_labels(mask)
-    if ablate == "P":
-        mask = np.isin(qty_full,pos_features,invert=False)
-        test_loader.dataset.mask_labels(mask)
-    #plt.close('all')
-    predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
-    # compute the loss and other performance metrics
-    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],max_force,min_force,'new_material',"V")
-    
-    plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
-    plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
-    gbp_data = compute_GBP(model,test_loader,model_type=model_type)
-    plot_heatmaps(gbp_data,predictions,test_loader.dataset.label_array[:,1:4],qty)
-    df_gbp_means = compute_and_plot_gbp(gbp_data,qty,False)
-    df_gbp_means.groupby('feature').mean().sort_values(by='gbp',ascending=False)
-    
-    #%%  
-    
-    predictions_list = []
-    metrics_list = []
-    '''
-    test_list_full = [1,3,5,7,8,10,12,14,15,17,19,21]
-    condition_list = ['center','center','center','center',
-                      'right','right','right','right',
-                      'left','left','left','left']
-    '''
-    '''
-    test_list_full = [2,6,9,13,16,20]
-    condition_list = ['center','center','right','right','left','left']
-    '''
-    '''
-    test_list_full =  [4,8]
-    condition_list = ['center','center']
-    '''
-    
-    test_list_full =  [4,11,18,
-                       22,23,
-                       24,25,
-                       26,27,
-                       28,29,
-                       32,33,
-                       34,36,
-                       37,38,39,
-                       45,46,47]
-    
-    
-    condition_list = ['center','right','left',
-                      'right_less','right_less',
-                      'right_more','right_more',
-                      'left_less','left_less',
-                      'left_more','left_more',
-                      'new_tool','new_tool',
-                      'new_material','new_material',
-                      'center','right','left',
-                      'z_mid','z_high','z_low']
-    
-    
-    
-    # compute the max and min force over the entire test set
-    max_force = np.array([0.0,0.0,0.0])
-    min_force = np.array([np.inf,np.inf,np.inf])
-    for test in test_list_full:
-        forces = np.loadtxt(file_dir+'/labels_'+str(test)+'.txt',delimiter = ",")[:,1:4]
-        test_max = np.max(forces,axis=0)
-        test_min = np.min(forces,axis=0)
-        for i in range(3):
-            if test_max[i] > max_force[i]:
-                print('max force {:f} found, dataset {}, axis {}, time{}'.format(test_max[i],test,i,np.argmax(forces,axis=0)[i]))
-                max_force[i] = test_max[i]
-            if test_min[i] < min_force[i]:
-                print('min force {:f} found, dataset {}, axis {}, time{}'.format(test_min[i],test,i,np.argmin(forces,axis=0)[i]))
-                min_force[i] = test_min[i]
-    
-    if use_predlist:
-        #predlist = pickle.load(open('preds_'+model_type+'_test4.preds',"rb"))
-        predlist = pickle.load(open('preds_'+model_type+'_l1-1e-3.preds',"rb"))
-    if encode:
-        for i,(test) in enumerate(range(1,40),0):
-            test_list = [test]
-            loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
-            test_loader = loader_dict['test']
+if __name__ == "__main__":
+    for (model_type,ablate,use_predlist) in condition_list:
+        print("model type " + model_type)
+        if ablate is not None:
+            print("ablation-"+ablate)
+        else:
+            print("full feature set")
+        #model_type = "VS"
+        #ablate = "P"
+        resnet_type= 50
+        feat_extract = False
+        force_align = False
+        encode = False
+        crop_list = []
+        #use_predlist = False
+        '''
+        for i in range(1,14):
+            crop_list.append((57,320,462,462))
+        for i in range(14,17):
+            crop_list.append((40,400,462,462))
+        for i in range(17,20):
+            crop_list.append((57,180,462,462))
+        for i in range(20,23):
+            crop_list.append((70,145,462,462))
+        crop_list.append((30,250,462,462))
+        '''
+        for i in range(1,48):
+            #crop_list.append((50,350,300,300))
+            crop_list.append((270-150,480-150,300,300))
             
-            if ablate == "F":
-                mask = np.isin(qty_full,force_features,invert=False)
-                test_loader.dataset.mask_labels(mask)
+        # Define a transformation for the images
+        if model_type == "V_RNN":
+            trans_function =  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        else:
+            trans_function = transforms.Compose([transforms.Resize((224,224)),
+                                                 transforms.ToTensor(),
+                                                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]) 
+        
+        # load the model
+        if model_type == "VS":
+            model = mdl.StateVisionModel(30, 54, 3,resnet_type=resnet_type,feature_extract=feat_extract,TFN=True)
+            model = nn.DataParallel(model)
+        elif model_type == "S":
+            model  = mdl.StateModel(54, 3)
+        elif model_type == "VS_deep":
+            model = mdl.StateVisionModel_deep(30, 54, 3)
+        elif model_type =="V" or model_type=="V_RNN":
+            #model = mdl.VisionModel(3)
+            model=mdl.BabyVisionModel()
+        
+        weight_file =  weight_file = "best_modelweights_" + model_type
+        
+        if model_type!="S" and feat_extract:
+            weight_file="best_modelweights_" + model_type + "_ft"
+            
+        if force_align and model_type!= "V" :
+            weight_file = weight_file + "_faligned"
+        
+        if resnet_type == 152 and model_type!="S":
+            weight_file = weight_file + "_152"
+        
+        if ablate=="P":
+            weight_file = weight_file+"_P"
+        elif ablate=="F":
+            weight_file = weight_file+"_F"
+        
+        weight_file = weight_file + "_shallow.dat"
+        model = nn.DataParallel(model)
+        model.load_state_dict(torch.load(weight_file))
+        
+        # uncomment this to do a encoding using the pre-trained RESNET
+        if encode and model_type=="V_RNN":
+            model.fc = torch.nn.Tanh()
+        elif encode and model_type == "V":
+            model.fc = torch.nn.Identity()
+            
+    
+        # load the dataset
+        
+        file_dir = '../../experiment_data' # define the file directory for dataset
+        train_list = [1,3,5,7,
+                      8,10,12,14,
+                      15,17,19,21,41,42]
+        #train_list = [1,3,5,7,43,45]
+        val_list = [1]
+        config_dict={'file_dir':file_dir,
+                 'include_torque': False,
+                 'spatial_forces': force_align,
+                 'custom_state': None,
+                 'batch_size': 16,
+                 'crop_list': crop_list,
+                 'trans_function': trans_function}
+        
+    
+        
+        predictions_list = []
+        metrics_list = []
+        '''
+        test_list_full = [1,3,5,7,8,10,12,14,15,17,19,21]
+        condition_list = ['center','center','center','center',
+                          'right','right','right','right',
+                          'left','left','left','left']
+        '''
+        '''
+        test_list_full = [2,6,9,13,16,20]
+        condition_list = ['center','center','right','right','left','left']
+        '''
+        '''
+        test_list_full =  [4,8]
+        condition_list = ['center','center']
+        '''
+        
+        test_list_full =  [4,11,18,
+                           22,23,
+                           24,25,
+                           26,27,
+                           28,29,
+                           32,33,
+                           34,36,
+                           37,38,39,
+                           45,46,47]
+        
+        
+        condition_list = ['center','right','left',
+                          'right_less','right_less',
+                          'right_more','right_more',
+                          'left_less','left_less',
+                          'left_more','left_more',
+                          'new_tool','new_tool',
+                          'new_material','new_material',
+                          'center','right','left',
+                          'z_mid','z_high','z_low']
+        
+        
+        '''old normalization'''
+        '''
+        # compute the max and min force over the entire test set
+        max_force = np.array([0.0,0.0,0.0])
+        min_force = np.array([np.inf,np.inf,np.inf])
+        for test in test_list_full:
+            forces = np.loadtxt(file_dir+'/labels_'+str(test)+'.txt',delimiter = ",")[:,1:4]
+            test_max = np.max(forces,axis=0)
+            test_min = np.min(forces,axis=0)
+            for i in range(3):
+                if test_max[i] > max_force[i]:
+                    print('max force {:f} found, dataset {}, axis {}, time{}'.format(test_max[i],test,i,np.argmax(forces,axis=0)[i]))
+                    max_force[i] = test_max[i]
+                if test_min[i] < min_force[i]:
+                    print('min force {:f} found, dataset {}, axis {}, time{}'.format(test_min[i],test,i,np.argmin(forces,axis=0)[i]))
+                    min_force[i] = test_min[i]
+        '''
+        
+        '''normalize over the maximum in that trial'''
+        max_force = []
+        min_force = []
+        for test in test_list_full:
+            forces = np.loadtxt(file_dir+'/labels_'+str(test)+'.txt',delimiter = ",")[:,1:4]
+            test_max = np.max(forces,axis=0)
+            test_min = np.min(forces,axis=0)
+            max_force.append(test_max)
+            min_force.append(test_min)
+
+        if use_predlist:
+            #predlist = pickle.load(open('preds_'+model_type+'_test4.preds',"rb"))
+            predlist = pickle.load(open('preds_'+model_type+'.preds',"rb"))
+        if encode:
+            for i,(test) in enumerate(range(1,48),1):
+                test_list = [test]
+                loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+                test_loader = loader_dict['test']
+                
+                if ablate == "F":
+                    mask = np.isin(qty_full,force_features,invert=False)
+                    test_loader.dataset.mask_labels(mask)
+                if ablate == "P":
+                    mask = np.isin(qty_full,pos_features,invert=False)
+                    test_loader.dataset.mask_labels(mask)
+                
+                if use_predlist:
+                    predictions = predlist[i]
+                else:
+                    #plt.close('all')
+                    predictions = mdl.evaluate_model(model,test_loader,model_type = model_type,encode=encode)
+                    predictions_list.append(predictions)
+                
+                np.savetxt('encodings_031621/encode_'+str(i+1)+'.txt',predictions) # uncomment to save encodings.
+        
+        else:
+            for i,(test,condition) in enumerate(zip(test_list_full,condition_list),0):
+                test_list = [test]
+                loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+                test_loader = loader_dict['test']
+                dataset_mean = np.loadtxt('train_dataset_mean.dat')
+                dataset_stdev = np.loadtxt('train_dataset_sd.dat')
+                
+                if ablate == "F":
+                    mask = np.isin(qty_full,force_features,invert=False)
+                    test_loader.dataset.mask_labels(mask)
+                if ablate == "P":
+                    mask = np.isin(qty_full,pos_features,invert=False)
+                    test_loader.dataset.mask_labels(mask)
+                
+                if use_predlist:
+                    print(i)
+                    predictions = predlist[i]
+                    predictions[:,:3] = (predictions[:,:3] * dataset_stdev[1:4])+dataset_mean[1:4]
+                else:
+                    print(condition)
+                    #plt.close('all')
+                    predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
+                    predictions = (predictions * dataset_stdev[1:4])+dataset_mean[1:4]
+                    predictions_list.append(predictions)
+               
+            # compute the loss and other performance metrics
+                if model_type =="V_RNN":
+                    #metrics = compute_loss_metrics(predictions[:-10,:],test_loader.dataset.label_array[20:-10,1:4],max_force,min_force,condition,model_type)
+                    metrics = compute_loss_metrics(predictions[:,:3],predictions[:,3:],max_force[i],min_force[i],condition,model_type)
+                else:
+                    metrics = compute_loss_metrics(predictions[10:-10,:],test_loader.dataset.raw_label_array[10:-10,1:4],max_force[i],min_force[i],condition,model_type)
+                metrics_list.append(metrics)
+            
+            # create dataframe
+            df_metrics = pd.DataFrame(metrics_list)
+            
+            import pickle
+            df_filedir = 'df_'+model_type
             if ablate == "P":
-                mask = np.isin(qty_full,pos_features,invert=False)
-                test_loader.dataset.mask_labels(mask)
-            
-            if use_predlist:
-                predictions = predlist[i]
-            else:
-                #plt.close('all')
-                predictions = mdl.evaluate_model(model,test_loader,model_type = model_type,encode=encode)
-                predictions_list.append(predictions)
-            
-            np.savetxt('encodings_V/encode_'+str(i+1)+'.txt',predictions) # uncomment to save encodings.
-    
-    else:
-        for i,(test,condition) in enumerate(zip(test_list_full,condition_list),0):
-            test_list = [test]
-            loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
-            test_loader = loader_dict['test']
-            
-            if ablate == "F":
-                mask = np.isin(qty_full,force_features,invert=False)
-                test_loader.dataset.mask_labels(mask)
-            if ablate == "P":
-                mask = np.isin(qty_full,pos_features,invert=False)
-                test_loader.dataset.mask_labels(mask)
-            
-            if use_predlist:
-                predictions = predlist[i]
-            else:
-                print(condition)
-                #plt.close('all')
-                predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
-                predictions_list.append(predictions)
-           
-        # compute the loss and other performance metrics
-            if model_type =="V_RNN":
-                #metrics = compute_loss_metrics(predictions[:-10,:],test_loader.dataset.label_array[20:-10,1:4],max_force,min_force,condition,model_type)
-                metrics = compute_loss_metrics(predictions[:,:3],predictions[:,3:],max_force,min_force,condition,model_type)
-            else:
-                metrics = compute_loss_metrics(predictions[10:-10,:],test_loader.dataset.raw_label_array[10:-10,1:4],max_force,min_force,condition,model_type)
-            metrics_list.append(metrics)
-        
-        # create dataframe
-        df_metrics = pd.DataFrame(metrics_list)
-        
-        import pickle
-        df_filedir = 'df_'+model_type
-        if ablate == "P":
-            df_filedir = df_filedir + "_ablate_P"
-        elif ablate == "F":
-            df_filedir = df_filedir + "_ablate_F"
-        df_filedir = df_filedir + '_test.df'
-        
-        pickle.dump(df_metrics,open(df_filedir,'wb'))
-        
-        if not use_predlist:
-            preds_filedir = "preds_"+model_type
-            if ablate == "P":
-                preds_filedir = preds_filedir + "_ablate_P"
+                df_filedir = df_filedir + "_ablate_P"
             elif ablate == "F":
-                preds_filedir = preds_filedir + "_ablate_F"
-            preds_filedir += '.preds'
-            pickle.dump(predictions_list,open(preds_filedir,'wb'))
+                df_filedir = df_filedir + "_ablate_F"
+            df_filedir = df_filedir + '_test_shallow.df'
+            
+            pickle.dump(df_metrics,open(df_filedir,'wb'))
+            
+            if not use_predlist:
+                preds_filedir = "preds_"+model_type
+                if ablate == "P":
+                    preds_filedir = preds_filedir + "_ablate_P"
+                elif ablate == "F":
+                    preds_filedir = preds_filedir + "_ablate_F"
+                preds_filedir += '_shallow.preds'
+                pickle.dump(predictions_list,open(preds_filedir,'wb'))
     
                 
     #%% Visualization
@@ -680,8 +690,8 @@ if __name__ == "__main__":
 
 #%%
     df_S = pickle.load(open('df_S_test.df','rb'))
-    df_S_F = pickle.load(open('df_S_test_ablate_F.df','rb'))
-    df_S_P = pickle.load(open("df_S_test_ablate_P.df","rb"))
+    df_S_F = pickle.load(open('df_S_ablate_F_test.df','rb'))
+    df_S_P = pickle.load(open("df_S_ablate_P_test.df","rb"))
     df_V = pickle.load(open('df_V_test.df','rb'))
     df_VS_F = pickle.load(open('df_VS_test_ablate_F2.df','rb'))
     df_VS_P = pickle.load(open('df_VS_test_ablate_P2.df','rb'))
@@ -692,7 +702,7 @@ if __name__ == "__main__":
     df_S_P['model']='S_P'
     df_VS_F['model']='VS_F'
     df_VS_P['model']='VS_P'
-    test_numbering_list = [1,1,1,1,2,1,2,1,2,1,2,1,2,1,2,2,2,2]
+    test_numbering_list = [1,1,1,1,2,1,2,1,2,1,2,1,2,1,2,2,2,2,1,1,1]
     df_S['test_number'] = test_numbering_list
     df_VS['test_number'] = test_numbering_list
     df_V['test_number'] = test_numbering_list
@@ -710,6 +720,27 @@ if __name__ == "__main__":
     #sns.catplot(x='model',y='value',hue="model",col='condition',row='metric',col_order=['right_more','right','right_less','center','left_less','left','left_more'],data=df_merge,kind='point',ci=None)
     sns.catplot(x='condition',y='value',hue="model",row='metric',data=df_merge,kind='bar',ci=None)
     sns.catplot(x='condition',y='value',hue="model",order=['new_tool','center','new_material'],data=df_merge,kind='point',ci=None,linestyles='-')
-    
 
+    #%%   Manual Plotting
     
+    test_list = [2,6,9,13,16,20]  
+    loader_dict,loader_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict)
+    test_loader = loader_dict['test']
+    if ablate == "F":
+        mask = np.isin(qty_full,force_features,invert=False)
+        test_loader.dataset.mask_labels(mask)
+    if ablate == "P":
+        mask = np.isin(qty_full,pos_features,invert=False)
+        test_loader.dataset.mask_labels(mask)
+    #plt.close('all')
+    predictions = mdl.evaluate_model(model,test_loader,model_type = model_type)
+    # compute the loss and other performance metrics
+    metrics = compute_loss_metrics(predictions,test_loader.dataset.label_array[:,1:4],max_force,min_force,'new_material',"V")
+    
+    plot_trajectories(predictions,test_loader.dataset.label_array[:,1:4])
+    plot_pearson(predictions,test_loader.dataset.label_array[:,1:4])
+    gbp_data = compute_GBP(model,test_loader,model_type=model_type)
+    plot_heatmaps(gbp_data,predictions,test_loader.dataset.label_array[:,1:4],qty)
+    df_gbp_means = compute_and_plot_gbp(gbp_data,qty,False)
+    df_gbp_means.groupby('feature').mean().sort_values(by='gbp',ascending=False)
+        

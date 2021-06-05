@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.optim as opt
 import numpy as np
-
+#%%
 def generate_grid(dataset,num_imgs=64,orig=True):
     
     dataloader = data.DataLoader(dataset,batch_size=num_imgs,shuffle=True)
@@ -81,17 +81,21 @@ if __name__ == "__main__":
     for i in range(1,48):
         #crop_list.append((50,350,300,300))
         crop_list.append((270-150,480-150,300,300))
-        
+    '''    
     train_list = [1,3,5,7,
                   8,10,12,14,
                   15,17,19,21,41,42]
     val_list = [2,6,
                 9,13,
                 16,20,44]
-    
-
-    #train_list = [1,3,5,7,43,45]
-    #val_list = [2,6,44,46]
+    '''
+    train_list = [1,3,5,7] # small data
+    #train_list = [1,3,5,7,48,49] # slow pulls
+    #val_list = [2,6,50] #  slow pulls
+    #train_list = [1,3,5,7,51,52] # fstate pulls
+    #val_list = [2,6,53] #  fstate pulls
+    #train_list = [1,3,5,7,54,55] # f fs pulls
+    val_list = [2,6,56] #  ffs  pulls
     #test_list = [4,11,18,
                  #22,23,24,25,26,27,28,29,32,33]
     test_list = [4,8]
@@ -104,7 +108,9 @@ if __name__ == "__main__":
                  'trans_function': trans_function}
     
     dataloaders,dataset_sizes = dat.init_dataset(train_list,val_list,test_list,model_type,config_dict,augment=False)
-    
+    np.savetxt('PSM2_mean_smalldata.csv',dataloaders['train'].dataset.mean)
+    np.savetxt('PSM2_std_smalldata.csv',dataloaders['train'].dataset.stdev)
+    '''
     ## if we ablate uncomment these lines -----------------------------
     qty = ['t','fx','fy','fz','tx','ty','tz',
        'px','py','pz','qx','qy','qz','qw','vx','vy','vz','wx','wy','wz',
@@ -129,14 +135,17 @@ if __name__ == "__main__":
        'vq1','vq2','vq3','vq4','vq5','vq6','vq7',
        'q1d','q2d','q3d','q4d','q5d','q6d','q7d']
     
-    mask_feature = pos_features
+    vel_features=['vx','vy','vz','wx','wy','wz',
+                 'vq1','vq2','vq3','vq4','vq5','vq6','vq7']
+    
+    mask_feature = vel_features
     mask = np.isin(qty,mask_feature,invert=False)
     
     for loader in dataloaders.values():
        loader.dataset.mask_labels(mask)   
        
-    weight_file = weight_file + "_P" # add ablation type
-    
+    weight_file = weight_file + "_V" # add ablation type
+    '''
     #end of ablation code
     
     #%%
@@ -144,18 +153,20 @@ if __name__ == "__main__":
 
     # define model
     if model_type == "VS":
-        model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract)
+        model = mdl.StateVisionModel(30, 54, 3,feature_extract=feat_extract,TFN=True)
     elif model_type == "S":
         model  = mdl.StateModel(54, 3)
     elif (model_type == "V") or (model_type == "V_RNN"):
-        model = mdl.VisionModel(3)
+        #model = mdl.VisionModel(3)
+        model = mdl.BabyVisionModel()
     
-    weight_file = weight_file + ".dat"
+    weight_file = weight_file + "_fffsdata.dat"
     
     # create loss function
     criterion = nn.MSELoss(reduction='sum')
     # define optimization method
     optimizer = opt.Adam(model.parameters(),lr=1e-3,weight_decay=0)
+    #optimizer = opt.SGD(model.parameters(),lr=1e-5,weight_decay=0,momentum=0.9)
     model,train_history,val_history,_ = mdl.train_model(model,
                                                          criterion, optimizer,
                                                          dataloaders, dataset_sizes,  
@@ -163,6 +174,7 @@ if __name__ == "__main__":
                                                          L1_loss=1e-3,
                                                          model_type= model_type,
                                                          weight_file=weight_file,
-                                                         suppress_log=False)
+                                                         suppress_log=False,
+                                                         multigpu=False)
     
     

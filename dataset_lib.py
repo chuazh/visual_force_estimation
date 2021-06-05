@@ -17,6 +17,8 @@ import numpy as np
 import glob
 import natsort
 from scipy.spatial.transform import Rotation as R
+import scipy.signal as sig
+import copy
 
 class RNN_ImgDataset(data.Dataset):
     
@@ -24,7 +26,7 @@ class RNN_ImgDataset(data.Dataset):
         
         self.lookback = lookback
         self.skips = skips
-        self.image_folder_prefix = '/space_time/imageset'
+        self.image_folder_prefix = '/imageset'
         self.file_dir = filedir
         self.image_dir = filedir
         self.label_array,self.lookup = self.read_labels(filedir,data_sets)
@@ -44,12 +46,12 @@ class RNN_ImgDataset(data.Dataset):
         
         if self.skips+1>self.lookback:
             print("Warning: Skip step is larger than look back range.")
-        '''
+        
+        # generate spacetime images
         # grab the dataset in which this sequence belongs to
         image_mean_idx = self.dataset_list[index]
         # get the image mean
         img_mean = transforms.ToTensor()(im.open(self.file_dir+self.image_folder_prefix+"_"+str(image_mean_idx)+"/image_mean.jpg"))
-        
         # the back range give a list of indexes we should load
         back_range = np.flip(np.arange(idx,idx-self.lookback-1,step=-1-self.skips).astype(int)) 
         img_list = []
@@ -74,10 +76,12 @@ class RNN_ImgDataset(data.Dataset):
             img_list.append(x)
         
         x = torch.stack(img_list,axis=0)
+        # end generate spacetime images
+        
         '''
         x = transforms.ToTensor()(im.open(self.image_list[index]))
         x = self.trans_function(x) # convert to tensor and normalize by image net
-    
+        '''
         y = self.label_array[idx][1:4]
         x2 = 0
         
@@ -342,6 +346,8 @@ class StateDataset(data.Dataset):
             for i in data_sets:
                 print(file_list[i-1])
                 data = np.loadtxt(file_list[i-1],delimiter=",")
+                #b,a = sig.butter(3,5/15)
+                #data[:,1:4] = sig.filtfilt(b,a,copy.copy(data[:,1:4]),axis=0)
                 if self.spatial_force:
                     data = realign_forces(data, np.array([10,11,12,13]), np.array([55,56,57]))
                 label_list.append(data)
